@@ -20,13 +20,11 @@ class AuthController extends Controller
                     'required',
                     'string',
                     'min:8',
-                    'regex:/[A-Z]/', 
-                    'regex:/[a-z]/', 
-                    'regex:/[0-9]/', 
-                    'regex:/[@$!%*?&#]/' 
-                ],
-                'role' => 'required|string|in:admin,staff,user'
-
+                    'regex:/[A-Z]/', // must contain at least one uppercase letter
+                    'regex:/[a-z]/', // must contain at least one lowercase letter
+                    'regex:/[0-9]/', // must contain at least one number
+                    'regex:/[@$!%*?&#]/' // must contain a special character
+                ]
             ]);
 
             if ($validate->fails()){
@@ -34,7 +32,6 @@ class AuthController extends Controller
                     'status'=> false,
                     'errors' => $validate->errors(),
                     'message' => 'Validation Error'
-
                 ], 422);
             }
 
@@ -42,18 +39,16 @@ class AuthController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => $request->role
-
+                'role' => 'client' // Default role set to client
             ]);
 
-            return response()-> json([
+            return response()->json([
                 'status' => true,
                 'message' => 'User created successfully',
                 'token' => $user->createToken("TOKEN")->plainTextToken  
-               
             ], 200);
 
-        }catch(\Throwable $th){
+        } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
                 'message' => $th->getMessage()
@@ -61,30 +56,45 @@ class AuthController extends Controller
         }
     }
 
-    public function login(Request $request){
-        try{
-                $attrs = $request-> validate([
-                    'email' => 'required|email',
-                    'password' => 'required|string'
-                ]);
+    public function loginAdmin(Request $request){
+        try {
+            $attrs = $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|string',
+                'role' => 'admin',
 
-                if (!Auth::attempt($attrs)){
-                    return response([
-                        'message' => 'Invalid credentials',
-                    ], 403);
-                }
+            ]);
 
-                return response()->json([
-                    'status' => true,
-                    'message' => 'Login successful',
-                    'token' => Auth::user()->createToken('secret')->plainTextToken
-                ],200);
-
-            } catch(\Throwable $th){
+            if (!Auth::attempt($attrs)){
                 return response()->json([
                     'status' => false,
-                    'message' => $th->getMessage()
-                ], 500);
+                    'message' => 'Invalid credentials'
+                ], 401);
             }
-         }
+
+            $user = Auth::user();
+
+            // Check if the user is an admin
+            if ($user->role !== 'admin') {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Login successful',
+                'token' => $user->createToken("TOKEN")->plainTextToken
+            ], 200);
+
+        } catch (\Throwable $th) {
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
+        }
+    }
+
+    
 }
