@@ -61,33 +61,28 @@ class AuthController extends Controller
             $attrs = $request->validate([
                 'email' => 'required|email',
                 'password' => 'required|string',
-                'role' => 'admin',
-
             ]);
+    
+            if (Auth::attempt(['email' => $attrs['email'], 'password' => $attrs['password']])) {
+                $user = Auth::user();
+                $role = $user->role; // Assuming the User model has a 'role' attribute
+                $token = $user->createToken('AdminToken')->plainTextToken;
 
-            if (!Auth::attempt($attrs)){
                 return response()->json([
-                    'status' => false,
-                    'message' => 'Invalid credentials'
+                    'message' => 'Login successful',
+                    'role' => $role,
+                    'token' => $token,
+                ], 200);
+            } else {
+                return response()->json([
+                    'message' => 'Invalid credentials',
                 ], 401);
             }
-
-            $user = Auth::user();
-
-            // Check if the user is an admin
-            if ($user->role !== 'admin') {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Unauthorized'
-                ], 403);
-            }
-
+        } catch (\Exception $e) {
             return response()->json([
-                'status' => true,
-                'message' => 'Login successful',
-                'token' => $user->createToken("TOKEN")->plainTextToken
-            ], 200);
-
+                'message' => 'An error occurred during login',
+                'error' => $e->getMessage(),
+            ], 500);
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
