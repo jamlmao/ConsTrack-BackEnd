@@ -18,6 +18,7 @@ class AController extends Controller
 {
     public function createStaff(Request $request)
     {
+        $user = Auth::user();
         // Ensure the authenticated user is an admin
         if (Auth::user()->role !== 'admin') {
             return response()->json([
@@ -179,7 +180,7 @@ class AController extends Controller
                     'company_name' => $request->company_name,
                     'phone_number' => $request->phone_number,
                 ];
-                
+
                 AuditLog::create([
                     'user_id' => $client->id,
                     'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
