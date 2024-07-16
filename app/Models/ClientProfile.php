@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class StaffProfile extends Model
+class ClientProfile extends Model
 {
     use HasFactory;
 
-    protected $table = 'staff_profiles';
+    
+    protected $table = 'client_profiles';
 
     // Specify the fillable fields
     protected $fillable = [
@@ -31,6 +32,5 @@ class StaffProfile extends Model
         return $this->belongsTo(User::class);
     }
 
-  
-
+   
 }
