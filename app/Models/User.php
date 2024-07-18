@@ -23,32 +23,21 @@ class User extends Authenticatable
         'password',
         'role'
     ];
-    protected static function boot()
-    {
-        parent::boot();
 
-        static::created(function ($user) {
-            if ($user->role === 'staff') {
-                StaffProfile::create([
-                    'user_id' => $user->id,
-                    'first_name' => '', // Default value, adjust as needed
-                    'last_name' => '', // Default value, adjust as needed
-                    'sex' => 'M', // Default value, adjust as needed
-                    'address' => '', // Default value, adjust as needed
-                    'city' => '', // Default value, adjust as needed
-                    'country' => '', // Default value, adjust as needed
-                    'zipcode' => '', // Default value, adjust as needed
-                    'company_name' => '', // Default value, adjust as needed
-                    'phone_number' => '', // Default value, adjust as needed
-                ]);
-            }
-        });
-    }
+   
 
     public function staffProfile()
     {
         return $this->hasOne(StaffProfile::class);
     }
+
+    public function ClientProfile()
+    {
+        return $this->hasOne(ClientProfile::class);
+    }
+
+    
+
 
     /**
      * The attributes that should be hidden for serialization.
