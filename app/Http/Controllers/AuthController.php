@@ -41,11 +41,18 @@ class AuthController extends Controller
                 'password' => Hash::make($request->password),
                 'role' => 'client' // Default role set to client
             ]);
+                  // Create token with expiration
+            $tokenResult = $user->createToken("TOKEN");
+            $token = $tokenResult->plainTextToken;
+            $tokenResult->token->expires_at = now()->addHours(1); // Set token to expire in 1 hour
+            $tokenResult->token->save();
 
             return response()->json([
                 'status' => true,
                 'message' => 'User created successfully',
-                'token' => $user->createToken("TOKEN")->plainTextToken  
+                'token' => $token,
+                'expires_at' => $tokenResult->token->expires_at
+
             ], 200);
 
         } catch (\Throwable $th) {
@@ -56,7 +63,7 @@ class AuthController extends Controller
         }
     }
 
-    public function loginAdmin(Request $request){
+    public function login(Request $request){
         try {
             $attrs = $request->validate([
                 'email' => 'required|email',
@@ -65,9 +72,15 @@ class AuthController extends Controller
     
             if (Auth::attempt(['email' => $attrs['email'], 'password' => $attrs['password']])) {
                 $user = Auth::user();
-                $role = $user->role; // Assuming the User model has a 'role' attribute
-                $token = $user->createToken('AdminToken')->plainTextToken;
-
+                $tokenResult = $user->createToken("AdminToken");
+                $token = $tokenResult->plainTextToken;
+    
+                // Set the expiration time on the accessToken
+                $tokenResult->accessToken->expires_at = now()->addHours(6); // Set token to expire in 6 hours
+                $tokenResult->accessToken->save();
+    
+                $role = $user->role; // Get the role of the user
+    
                 return response()->json([
                     'message' => 'Login successful',
                     'role' => $role,
@@ -90,6 +103,5 @@ class AuthController extends Controller
             ], 500);
         }
     }
-
     
 }

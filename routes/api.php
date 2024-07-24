@@ -4,7 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AController;
-
+use App\Http\Controllers\PController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,7 +20,7 @@ use App\Http\Controllers\AController;
 
 
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/loginA', [AuthController::class, 'loginAdmin']);
+Route::post('/loginA', [AuthController::class, 'login']);
 
 
 
@@ -30,4 +30,6 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/registerS', [AController::class, 'createStaff']);
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);
+    Route::post('/projects', [PController::class, 'store']);
+    Route::post('/tasks', [PController::class, 'addTask']);
 });

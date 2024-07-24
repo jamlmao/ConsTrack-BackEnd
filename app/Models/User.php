@@ -28,7 +28,7 @@ class User extends Authenticatable
 
     public function staffProfile()
     {
-        return $this->hasOne(StaffProfile::class);
+        return $this->hasOne(StaffProfile::class, 'user_id');
     }
 
     public function ClientProfile()
