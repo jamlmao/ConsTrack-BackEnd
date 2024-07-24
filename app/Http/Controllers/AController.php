@@ -45,9 +45,9 @@ class AController extends Controller
             'address' => 'required|string|max:60',
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|max:9',
+            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
             'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|min:11|max:15',
+            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
         ]);
 
         try {
@@ -136,9 +136,9 @@ class AController extends Controller
             'address' => 'required|string|max:60',
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|max:9',
+            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
             'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|min:11|max:15',
+            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
         ]);
     
         try {
@@ -214,9 +214,9 @@ class AController extends Controller
             'address' => 'required|string|max:60',
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|max:9',
+            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
             'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|min:11|max:15',
+            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
         ]);
 
         $user = User::find($id);
