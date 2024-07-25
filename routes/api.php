@@ -30,6 +30,6 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/registerS', [AController::class, 'createStaff']);
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);
-    Route::post('/projects', [PController::class, 'store']);
+    Route::post('/projects', [PController::class, 'addproject']);
     Route::post('/tasks', [PController::class, 'addTask']);
 });

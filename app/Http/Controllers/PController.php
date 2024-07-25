@@ -11,7 +11,7 @@ use App\Models\Task;
 
 class PController extends Controller
 {
-    public function store(Request $request)
+    public function addproject(Request $request)
     {
         DB::beginTransaction(); // Start the transaction
         try {
@@ -22,8 +22,13 @@ class PController extends Controller
                 'completion_date' => 'required|date',
                 'starting_date' => 'required|date',
                 'totalBudget' => 'required|integer',
+                'pj_image' => 'required|string', // Base64 encoded image
             ]);
-    
+
+            $validatedData['status'] = 'in_progress'; // Set status to in_progress by default
+
+            // Set the photo path
+
             // Retrieve the role of the authenticated user from the 'role' column
             $user = Auth::user();
             $userRole = $user->role; // Adjust this if your column name is different
@@ -41,9 +46,23 @@ class PController extends Controller
             } else {
                 return response()->json(['message' => 'Invalid role for creating a project'], 403);
             }
-    
-            $validatedData['status'] = 'in_progress'; // Set status to in_progress by default
-    
+            
+            // Decode the base64 encoded image
+            $decodedImage = base64_decode($validatedData['pj_image'], true);
+            if ($decodedImage ===false){
+                return response() -> json (['message' => 'Invalid base64 image'], 400);
+            }
+            
+            $imageName = time().'.png';
+            $isSaved = \Storage::disk('public')->put('photos/projects/'.$imageName, $decodedImage);
+
+            if (!$isSaved) {
+                return response()->json(['message' => 'Failed to save image'], 500);
+            }
+
+            $photoPath = asset('storage/photos/tasks/'.$imageName);
+
+            $validatedData['pj_image'] = $photoPath; //set the photo path
             // Create a new project
             $project = Project::create($validatedData);
     
@@ -73,7 +92,7 @@ class PController extends Controller
             'pt_task_name' => 'required|string',
             'pt_completion_date' => 'required|date',
             'pt_starting_date' => 'required|date',
-            'pt_photo_task' => 'required|string', // Assuming base64 encoded string
+            'pt_photo_task' => 'required|string', // Base64 encoded image
             'pt_used_budget' => 'required|integer',
         ]);
 
