@@ -17,9 +17,10 @@ class CreateProjectsTable extends Migration
             $table->id();
             $table->string('site_location');
             $table->unsignedBigInteger('client_id');
+            $table->unsignedBigInteger('staff_id');
             $table->string('status');
             $table->date('completion_date');
-            $table->unsignedBigInteger('staff_id');
+            $table->string('pj_image')->nullable();
             $table->date('starting_date');
             $table->integer('totalBudget');
             $table->timestamps();
