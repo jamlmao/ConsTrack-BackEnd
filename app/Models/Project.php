@@ -22,7 +22,8 @@ class Project extends Model
         'staff_id',
         'starting_date',
         'totalBudget',
-        'pj_image'
+        'pj_image',
+        'pj_pdf'
     ];
 }
 

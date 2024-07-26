@@ -41,20 +41,28 @@ class AuthController extends Controller
                 'password' => Hash::make($request->password),
                 'role' => 'client' // Default role set to client
             ]);
-                  // Create token with expiration
+
+            // Create token with expiration
             $tokenResult = $user->createToken("TOKEN");
-            $token = $tokenResult->plainTextToken;
-            $tokenResult->token->expires_at = now()->addHours(1); // Set token to expire in 1 hour
-            $tokenResult->token->save();
+            if ($tokenResult && $tokenResult->accessToken) {
+                $token = $tokenResult->plainTextToken;
+                $tokenResult->accessToken->expires_at = now()->addHours(1); // Set token to expire in 1 hour
+                $tokenResult->accessToken->save();
 
-            return response()->json([
-                'status' => true,
-                'message' => 'User created successfully',
-                'token' => $token,
-                'expires_at' => $tokenResult->token->expires_at
-
-            ], 200);
-
+                return response()->json([
+                    'status' => true,
+                    'message' => 'User created successfully',
+                    'token' => $token,
+                    'expires_at' => $tokenResult->accessToken->expires_at
+                ], 200);
+            } else {
+                // Log the error for debugging
+                Log::error('Token creation failed for user: ' . $user->id);
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Token creation failed'
+                ], 500);
+            }
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
