@@ -308,5 +308,14 @@ class AController extends Controller
 
     }
 
+    public function getLoggedInUserNameAndId()
+    {
+        $user = Auth::user();
+        return response()->json([
+            'name' => $user->name,
+            'id' => $user->id,
+        ]);
+    }
+ 
 
 }

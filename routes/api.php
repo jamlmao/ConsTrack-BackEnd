@@ -34,4 +34,5 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/tasks', [PController::class, 'addTask']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
+    Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
 });
