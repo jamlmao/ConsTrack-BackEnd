@@ -25,6 +25,12 @@ class Project extends Model
         'pj_image',
         'pj_pdf'
     ];
+
+      // Define the relationship with the Client model
+      public function client()
+      {
+          return $this->belongsTo(ClientProfile::class);
+      }
 }
 
 

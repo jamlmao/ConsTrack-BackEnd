@@ -2,6 +2,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Project;
+use App\Models\Task;
+use App\Models\ClientProfile;
 use App\Models\ProjectLogs;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -156,23 +158,47 @@ class PController extends Controller
     }
 
     public function getProjectsForStaff()
-    {
-        try {
-            $user = Auth::user();
-            $staffProfile = $user->staffProfile;
+{
+    try {
+        $user = Auth::user();
+        $staffProfile = $user->staffProfile;
 
-            if (!$staffProfile) {
-                Log::error('Staff profile not found for authenticated user');
-                return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
-            }
-
-            $projects = Project::where('staff_id', $staffProfile->id)->get();
-
-            return response()->json($projects, 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch projects: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch projects'], 500);
+        if (!$staffProfile) {
+            Log::error('Staff profile not found for authenticated user');
+            return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
         }
+
+        $projects = Project::where('staff_id', $staffProfile->id)
+            ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
+            ->get();
+
+        $projectsWithClientDetails = $projects->map(function ($project) {
+            return [
+                'id' => $project->id,
+                'site_location' => $project->site_location,
+                'client_id' => $project->client_id,
+                'staff_id' => $project->staff_id,
+                'status' => $project->status,
+                'completion_date' => $project->completion_date,
+                'pj_image' => $project->pj_image,
+                'pj_pdf' => $project->pj_pdf,
+                'starting_date' => $project->starting_date,
+                'totalBudget' => $project->totalBudget,
+                'created_at' => $project->created_at,
+                'updated_at' => $project->updated_at,
+                'client' => [
+                    'first_name' => $project->client->first_name,
+                    'last_name' => $project->client->last_name,
+                    'phone_number'=>$project->client->phone_number,
+                ],
+            ];
+        });
+
+        return response()->json($projectsWithClientDetails, 200);
+    } catch (Exception $e) {
+        Log::error('Failed to fetch projects: ' . $e->getMessage());
+        return response()->json(['message' => 'Failed to fetch projects'], 500);
     }
+}
 
 }
