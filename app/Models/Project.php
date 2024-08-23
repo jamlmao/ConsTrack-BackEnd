@@ -22,8 +22,15 @@ class Project extends Model
         'staff_id',
         'starting_date',
         'totalBudget',
-        'pj_image'
+        'pj_image',
+        'pj_pdf'
     ];
+
+      // Define the relationship with the Client model
+      public function client()
+      {
+          return $this->belongsTo(ClientProfile::class);
+      }
 }
 
 
