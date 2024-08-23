@@ -32,5 +32,10 @@ class ClientProfile extends Model
         return $this->belongsTo(User::class);
     }
 
+    // Define the relationship with the StaffProfile model for the same company name 
+    public function staffProfiles()
+    {
+        return $this->hasMany(StaffProfile::class, 'company_name', 'company_name');
+    }
    
 }

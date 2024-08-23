@@ -292,4 +292,21 @@ class AController extends Controller
             return response()->json(['error' => 'Failed to update staff profile'], 500);
         }
     }
+    public function getClientsUnderSameCompany()
+    {
+         // Get the logged-in staff profile
+         $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+
+         if (!$staffProfile) {
+             return response()->json(['error' => 'Staff profile not found'], 404);
+         }
+ 
+         // Get the clients under the same company
+         $clients = ClientProfile::where('company_name', $staffProfile->company_name)->get();
+ 
+         return response()->json($clients);
+
+    }
+
+
 }

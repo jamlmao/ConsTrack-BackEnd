@@ -154,4 +154,25 @@ class PController extends Controller
         Log::info('Task created successfully', ['task' => $task]);
         return response()->json($task, 201); // Return the newly created task
     }
+
+    public function getProjectsForStaff()
+    {
+        try {
+            $user = Auth::user();
+            $staffProfile = $user->staffProfile;
+
+            if (!$staffProfile) {
+                Log::error('Staff profile not found for authenticated user');
+                return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
+            }
+
+            $projects = Project::where('staff_id', $staffProfile->id)->get();
+
+            return response()->json($projects, 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch projects'], 500);
+        }
+    }
+
 }
