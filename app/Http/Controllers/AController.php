@@ -18,16 +18,8 @@ class AController extends Controller
 {
     public function createStaff(Request $request)
     {
-        $user = Auth::user();
-        // Ensure the authenticated user is an admin
-        if (Auth::user()->role !== 'admin') {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthorized'
-            ], 403);
-        }
-
-        $request->validate([
+        // Validate the request data
+        $validatedData = $request->validate([
             'name' => 'required|string|max:20',
             'email' => 'required|string|email|max:20|unique:users',
             'password' => [
@@ -47,75 +39,63 @@ class AController extends Controller
             'country' => 'required|string|max:60',
             'zipcode' => 'required|string|regex:/^\d{0,9}$/',
             'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
+            'phone_number' => 'required|string|regex:/^\d{10,15}$/',
         ]);
-
+    
         try {
-            DB::transaction(function () use ($request) {
+            DB::transaction(function () use ($request, $validatedData) {
+                // Create the user
                 $user = User::create([
-                    'name' => $request->name,
-                    'email' => $request->email,
-                    'password' => Hash::make($request->password),
+                    'name' => $validatedData['name'],
+                    'email' => $validatedData['email'],
+                    'password' => bcrypt($validatedData['password']),
                     'role' => 'staff',
                 ]);
-
-                $user->staffProfile()->create([
-                    'first_name' => $request->first_name,
-                    'last_name' => $request->last_name,
-                    'sex' => $request->sex,
-                    'address' => $request->address,
-                    'city' => $request->city,
-                    'country' => $request->country,
-                    'zipcode' => $request->zipcode,
-                    'company_name' => $request->company_name,
-                    'phone_number' => $request->phone_number,
+    
+                // Create the staff profile
+                $staffProfile = StaffProfile::create([
+                    'user_id' => $user->id,
+                    'first_name' => $validatedData['first_name'],
+                    'last_name' => $validatedData['last_name'],
+                    'sex' => $validatedData['sex'],
+                    'address' => $validatedData['address'],
+                    'city' => $validatedData['city'],
+                    'country' => $validatedData['country'],
+                    'zipcode' => $validatedData['zipcode'],
+                    'phone_number' => $validatedData['phone_number'],
+                    'company_name' => $validatedData['company_name'],
                 ]);
+    
+                // Log the creation
+                Log::info('Staff account created successfully', ['user_id' => $user->id, 'staff_profile_id' => $staffProfile->id]);
             });
-
-
-            $newValues = [
-                'name' => $user->name,
-                'email' => $user->email,
-                'password' => $user->password,
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'sex' => $request->sex,
-                'address' => $request->address,
-                'city' => $request->city,
-                'country' => $request->country,
-                'zipcode' => $request->zipcode,
-                'company_name' => $request->company_name,
-                'phone_number' => $request->phone_number,
-            ];
-
-            AuditLog::create([
-                'user_id' => $user->id,
-                'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
-                'action' => 'create',
-                'old_values' => null,
-                'new_values' => json_encode($newValues),
-            ]);
-     
-
-            return response()->json(['message' => 'Staff created successfully'], 201);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => false,
-                'message' => $th->getMessage()
-            ], 500);
+    
+            return response()->json(['status' => true, 'message' => 'Staff account created successfully'], 201);
+        } catch (Exception $e) {
+            // Log the error
+            Log::error('Failed to create staff account: ' . $e->getMessage());
+    
+            return response()->json(['status' => false, 'message' => 'Failed to create staff account'], 500);
         }
     }
-
   
     public function createClient(Request $request)
     {
         $user = Auth::user();
-
+    
         if (!in_array($user->role, ['admin', 'staff'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unauthorized'
             ], 403);
+        }
+    
+        // Ensure the user has an associated staff profile
+        if (!$user->staffProfile) {
+            return response()->json([
+                'status' => false,
+                'message' => 'User does not have an associated staff profile'
+            ], 400);
         }
     
         $request->validate([
@@ -137,8 +117,7 @@ class AController extends Controller
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
             'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-            'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
+           'phone_number' => 'required|string|regex:/^\d{10,15}$/',
         ]);
     
         try {
@@ -160,12 +139,10 @@ class AController extends Controller
                     'city' => $request->city,
                     'country' => $request->country,
                     'zipcode' => $request->zipcode,
-                    'company_name' => $request->company_name,
+                    'company_name' => $user->staffProfile->company_name, // Automatically set the company name from staff profile
                     'phone_number' => $request->phone_number,
                 ]);
-               
-
-
+    
                 $newValues = [
                     'name' => $client->name,
                     'email' => $client->email,
@@ -177,10 +154,10 @@ class AController extends Controller
                     'city' => $request->city,
                     'country' => $request->country,
                     'zipcode' => $request->zipcode,
-                    'company_name' => $request->company_name,
+                    'company_name' => $user->staffProfile->company_name, // Automatically set the company name from staff profile
                     'phone_number' => $request->phone_number,
                 ];
-
+    
                 AuditLog::create([
                     'user_id' => $client->id,
                     'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
@@ -188,9 +165,6 @@ class AController extends Controller
                     'old_values' => null,
                     'new_values' => json_encode($newValues),
                 ]);
-
-
-
             });
     
             return response()->json(['message' => 'Client created successfully'], 201);
@@ -311,11 +285,49 @@ class AController extends Controller
     public function getLoggedInUserNameAndId()
     {
         $user = Auth::user();
-        return response()->json([
+        $response = [
             'name' => $user->name,
             'id' => $user->id,
-        ]);
+            'role' => $user->role,
+            'email' => $user->email,
+        ];
+    
+        if ($user->role === 'staff') {
+            $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+            if ($staffProfile) {
+                $response['staff'] = [
+                    'id' => $staffProfile->id,
+                    'first_name' => $staffProfile->first_name,
+                    'last_name' => $staffProfile->last_name,
+                    'sex' => $staffProfile->sex,
+                    'address' => $staffProfile->address,
+                    'city' => $staffProfile->city,
+                    'country' => $staffProfile->country,
+                    'zipcode' => $staffProfile->zipcode,
+                    'phone_number' => $staffProfile->phone_number,
+                    'company_name' => $staffProfile->company_name,
+                ];
+            }
+        } elseif ($user->role === 'client') {
+            $clientProfile = ClientProfile::where('user_id', $user->id)->first();
+            if ($clientProfile) {
+                $response['client_details'] = [
+                    'id' => $clientProfile->id,
+                    'first_name' => $clientProfile->first_name,
+                    'last_name' => $clientProfile->last_name,
+                    'sex' => $clientProfile->sex,
+                    'address' => $clientProfile->address,
+                    'city' => $clientProfile->city,
+                    'country' => $clientProfile->country,
+                    'zipcode' => $clientProfile->zipcode,
+                    'phone_number' => $clientProfile->phone_number,
+                    'company_name' => $clientProfile->company_name,
+                ];
+            }
+        }
+    
+        return response()->json($response);
     }
- 
-
+    
+   
 }

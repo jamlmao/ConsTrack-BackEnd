@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\ClientProfile;
+use App\Models\StaffProfile;
 use App\Models\ProjectLogs;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -200,5 +201,29 @@ class PController extends Controller
         return response()->json(['message' => 'Failed to fetch projects'], 500);
     }
 }
+
+
+    public function getCompanyProjects($staffId)
+    {
+        try {
+            // Fetch the staff's company name
+            $staff = StaffProfile::find($staffId);
+            if (!$staff) {
+                return response()->json(['message' => 'Staff not found'], 404);
+            }
+            $companyName = $staff->company_name;
+
+            // Get all staff IDs under the same company
+            $staffIds = StaffProfile::where('company_name', $companyName)->pluck('id');
+
+            // Count projects created by any staff under the same company
+            $projectCount = Project::whereIn('staff_id', $staffIds)->count();
+
+            return response()->json(['project_count' => $projectCount], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to count projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to count projects'], 500);
+        }
+    }
 
 }
