@@ -26,7 +26,7 @@ Route::post('/loginA', [AuthController::class, 'login']);
 
 
 Route::group(['middleware'=> ['auth:sanctum']],function(){
-
+    Route::post('/logout',[AuthController::class, 'logout']);
     Route::post('/registerS', [AController::class, 'createStaff']);
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);

@@ -270,18 +270,26 @@ class AController extends Controller
     }
     public function getClientsUnderSameCompany()
     {
-         // Get the logged-in staff profile
-         $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+        // Get the logged-in staff profile
+        $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
 
-         if (!$staffProfile) {
-             return response()->json(['error' => 'Staff profile not found'], 404);
-         }
- 
-         // Get the clients under the same company
-         $clients = ClientProfile::where('company_name', $staffProfile->company_name)->get();
- 
-         return response()->json($clients);
+        if (!$staffProfile) {
+            return response()->json(['error' => 'Staff profile not found'], 404);
+        }
 
+        // Get the company name from the staff profile
+        $companyName = $staffProfile->company_name;
+
+        // Get clients under the same company and their project statuses
+        $clients = DB::table('client_profiles')
+            ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
+            ->where('client_profiles.company_name', $companyName)
+            ->whereNotNull('client_profiles.company_name') // Ensure company_name is not null
+            ->select('client_profiles.*', 'projects.status as project_status')
+            ->distinct() // Ensure unique records
+            ->get();
+
+        return response()->json(['clients' => $clients], 200);
     }
 
     public function getLoggedInUserNameAndId()
