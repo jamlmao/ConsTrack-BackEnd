@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log; 
-
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 
 class AController extends Controller
@@ -330,4 +332,62 @@ class AController extends Controller
     }
     
    
+    public function sendOtp(Request $request)
+    {
+        $user = Auth::user();
+
+        // Check if the user can request a new OTP
+        if ($user->otp_requested_at && Carbon::parse($user->otp_requested_at)->addMinutes(2)->isFuture()) {
+            return response()->json(['message' => 'You can request a new OTP after 2 minutes'], 429);
+        }
+
+        // Generate OTP
+        $otp = rand(100000, 999999);
+
+        // Save OTP and request time to the user
+        $user->otp = $otp;
+        $user->otp_expires_at = now()->addMinutes(10); // OTP expires in 10 minutes
+        $user->otp_requested_at = now();
+        $user->save();
+
+        // Send OTP email
+        Mail::raw("Your OTP is: $otp", function ($message) use ($user) {
+            $message->to($user->email)
+                    ->subject('Your OTP for Password Change');
+        });
+
+        return response()->json(['message' => 'OTP sent to your email'], 200);
+    }
+
+    public function updatePassword(Request $request)
+    {
+        $user = Auth::user();
+    
+        // Validate the request data
+        $validatedData = $request->validate([
+            'otp' => 'required|string',
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'regex:/[A-Z]/', // must contain at least one uppercase letter
+                'regex:/[a-z]/', // must contain at least one lowercase letter
+                'regex:/[0-9]/', // must contain at least one digit
+                'regex:/[@$!%*?&#]/' // must contain a special character
+            ],
+        ]);
+    
+        // Check if the OTP is correct and not expired
+        if ($user->otp !== $validatedData['otp'] || now()->greaterThan($user->otp_expires_at)) {
+            return response()->json(['message' => 'Invalid or expired OTP'], 400);
+        }
+    
+        // Update the user's password
+        $user->password = bcrypt($validatedData['new_password']);
+        $user->otp = null; // Clear the OTP
+        $user->otp_expires_at = null; // Clear the OTP expiration time
+        $user->save();
+    
+        return response()->json(['message' => 'Password updated successfully'], 200);
+    }
 }

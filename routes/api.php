@@ -36,4 +36,6 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     Route::get('/CompanyProjects/{staffId}', [PController::class, 'getCompanyProjects']);
+    Route::post('/send-otp', [AController::class, 'sendOtp']);
+    Route::post('/update-password', [AController::class, 'updatePassword']);
 });
