@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,7 +37,10 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
-    Route::get('/CompanyProjects/{staffId}', [PController::class, 'getCompanyProjects']);
+    Route::get('/CompanyProjects/{staffId}', [PController::class, 'getProjectsCounts']);
+    Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']);
     Route::post('/send-otp', [AController::class, 'sendOtp']);
     Route::post('/update-password', [AController::class, 'updatePassword']);
+    Route::post('/generateSowa', [PController::class, 'downloadProjectsPdf']);
+   
 });

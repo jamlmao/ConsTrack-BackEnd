@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Exception;
 
 class PController extends Controller
@@ -115,6 +117,7 @@ class PController extends Controller
         }
     }
 
+
     public function addTask(Request $request)
     {
         // Validate the incoming request
@@ -123,7 +126,8 @@ class PController extends Controller
             'pt_task_name' => 'required|string',
             'pt_completion_date' => 'required|date',
             'pt_starting_date' => 'required|date',
-            'pt_photo_task' => 'required|string', // Base64 encoded image
+            'pt_photo_task' => 'nullable|string', // Base64 encoded image
+            'pt_file_task' => 'nullable|string',
             'pt_used_budget' => 'required|integer',
         ]);
 
@@ -134,6 +138,14 @@ class PController extends Controller
             return response()->json(['message' => 'Invalid base64 image'], 400);
         }
 
+        $decodedfile = base64_decode($request->pt_file_task, true);
+        if ($decodedfile === false) {
+            Log::error('Invalid base64 file');
+            return response()->json(['message' => 'Invalid base64 file'], 400);
+        }
+
+
+
         $imageName = time() . '.png';
         $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
 
@@ -143,6 +155,18 @@ class PController extends Controller
         }
 
         $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+
+        $fileName = time() . '.png';
+        $FileisSaved = Storage::disk('public')->put('file/tasks/' . $fileName, $fileImage);
+
+        if (!$FileisSaved) {
+            Log::error('Failed to save file');
+            return response()->json(['message' => 'Failed to save file'], 500);
+        }
+
+        $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+
+        $filePath = asset('storage/file/task/'.$fileName);
 
         // Create a new task
         $task = Task::create([
@@ -158,52 +182,60 @@ class PController extends Controller
         return response()->json($task, 201); // Return the newly created task
     }
 
+
+
     public function getProjectsForStaff()
-{
-    try {
-        $user = Auth::user();
-        $staffProfile = $user->staffProfile;
-
-        if (!$staffProfile) {
-            Log::error('Staff profile not found for authenticated user');
-            return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
+    {
+        try {
+            $user = Auth::user();
+            $staffProfile = $user->staffProfile;
+    
+            if (!$staffProfile) {
+                Log::error('Staff profile not found for authenticated user');
+                return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
+            }
+    
+            // Get the company name from the staff profile
+            $companyName = $staffProfile->company_name;
+    
+            // Fetch projects for all staff members under the same company
+            $projects = Project::whereHas('staffProfile', function ($query) use ($companyName) {
+                    $query->where('company_name', $companyName);
+                })
+                ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
+                ->get();
+    
+            $projectsWithClientDetails = $projects->map(function ($project) {
+                return [
+                    'id' => $project->id,
+                    'site_location' => $project->site_location,
+                    'client_id' => $project->client_id,
+                    'staff_id' => $project->staff_id,
+                    'status' => $project->status,
+                    'completion_date' => $project->completion_date,
+                    'pj_image' => $project->pj_image,
+                    'pj_pdf' => $project->pj_pdf,
+                    'starting_date' => $project->starting_date,
+                    'totalBudget' => $project->totalBudget,
+                    'created_at' => $project->created_at,
+                    'updated_at' => $project->updated_at,
+                    'client' => [
+                        'first_name' => $project->client->first_name,
+                        'last_name' => $project->client->last_name,
+                        'phone_number' => $project->client->phone_number,
+                    ],
+                ];
+            });
+    
+            return response()->json($projectsWithClientDetails, 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch projects'], 500);
         }
-
-        $projects = Project::where('staff_id', $staffProfile->id)
-            ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
-            ->get();
-
-        $projectsWithClientDetails = $projects->map(function ($project) {
-            return [
-                'id' => $project->id,
-                'site_location' => $project->site_location,
-                'client_id' => $project->client_id,
-                'staff_id' => $project->staff_id,
-                'status' => $project->status,
-                'completion_date' => $project->completion_date,
-                'pj_image' => $project->pj_image,
-                'pj_pdf' => $project->pj_pdf,
-                'starting_date' => $project->starting_date,
-                'totalBudget' => $project->totalBudget,
-                'created_at' => $project->created_at,
-                'updated_at' => $project->updated_at,
-                'client' => [
-                    'first_name' => $project->client->first_name,
-                    'last_name' => $project->client->last_name,
-                    'phone_number'=>$project->client->phone_number,
-                ],
-            ];
-        });
-
-        return response()->json($projectsWithClientDetails, 200);
-    } catch (Exception $e) {
-        Log::error('Failed to fetch projects: ' . $e->getMessage());
-        return response()->json(['message' => 'Failed to fetch projects'], 500);
     }
-}
 
 
-    public function getCompanyProjects($staffId)
+    public function getProjectsCounts($staffId)
     {
         try {
             // Fetch the staff's company name
@@ -224,6 +256,53 @@ class PController extends Controller
             Log::error('Failed to count projects: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to count projects'], 500);
         }
+    }
+
+ 
+    
+    public function getProjectAndClientDetails($projectId)
+    {
+        // Get the logged-in user's ID
+        $userId = Auth::id();
+    
+        // Fetch the company_name of the logged-in user
+        $companyName = DB::table('staff_profiles')
+            ->where('user_id', $userId)
+            ->value('company_name');
+    
+        // Fetch the project and client details for the specified project ID and company name
+        $project = DB::table('projects')
+            ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+            ->join('staff_profiles', 'projects.staff_id', '=', 'staff_profiles.id')
+            ->where('staff_profiles.company_name', $companyName) // Ensure the project belongs to the same company
+            ->where('projects.id', $projectId)
+            ->select(
+                'projects.id as project_id',
+                'projects.site_location',
+                'projects.starting_date as project_starting_date',
+                'projects.completion_date as project_completion_date',
+                'client_profiles.first_name as first_name',
+                'client_profiles.last_name as last_name',
+                'client_profiles.address as address',
+                'client_profiles.city as city'
+            )
+            ->first();
+    
+        if ($project) {
+            // Return the project and client details as JSON
+            return response()->json($project);
+        } else {
+            // Return a 404 response if the project is not found
+            return response()->json(['message' => 'Project not found'], 404);
+        }
+    }
+
+
+    
+
+    public function downloadProjectsPdf()
+    {
+        return $this->generateProjectsPdf();
     }
 
 }
