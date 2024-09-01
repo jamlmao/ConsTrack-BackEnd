@@ -31,6 +31,12 @@ class Project extends Model
       {
           return $this->belongsTo(ClientProfile::class);
       }
+
+      public function staffProfile()
+    {
+        return $this->belongsTo(StaffProfile::class, 'staff_id');
+    }
+
 }
 
 

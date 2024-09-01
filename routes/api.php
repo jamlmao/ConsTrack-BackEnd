@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,13 +28,26 @@ Route::post('/loginA', [AuthController::class, 'login']);
 
 
 Route::group(['middleware'=> ['auth:sanctum']],function(){
-
+    Route::post('/logout',[AuthController::class, 'logout']);
     Route::post('/registerS', [AController::class, 'createStaff']);
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
-    Route::post('/tasks', [PController::class, 'addTask']);
+    Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+    Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
+   
+    Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
+    Route::get('/clients-count-by-month', [AController::class, 'getClientsCountByMonth']);
+    Route::get('/staff-count-by-month', [AController::class, 'getStaffCountByMonth']);
+    Route::get('/projectsPM', [PController::class, 'getProjectsPerMonth']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
+    
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
+    Route::get('/CompanyProjects/{staffId}', [PController::class, 'getProjectsCounts']);
+    Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']);
+    Route::post('/send-otp', [AController::class, 'sendOtp']);
+    Route::post('/update-password', [AController::class, 'updatePassword']);
+    Route::post('/generateSowa', [PController::class, 'downloadProjectsPdf']);
+   
 });

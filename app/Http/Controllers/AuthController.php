@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Resources\UserResource;
+use App\Models\StaffProfile;
+use App\Models\ClientProfile;
 
 class AuthController extends Controller
 {
@@ -84,26 +86,39 @@ class AuthController extends Controller
                 $token = $tokenResult->plainTextToken;
     
                 // Set the expiration time on the accessToken
-                $tokenResult->accessToken->expires_at = now()->addHours(6); // Set token to expire in 6 hours
+                $tokenResult->accessToken->expires_at = now()->addHours(8); // Set token to expire in 8 hours
                 $tokenResult->accessToken->save();
     
                 $role = $user->role; // Get the role of the user
+    
+                // Initialize profile ID
+                $profileId = null;
+    
+                // Fetch the profile ID based on the user's role
+                if ($role === 'staff') {
+                    $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+                    if ($staffProfile) {
+                        $profileId = $staffProfile->id;
+                    }
+                } elseif ($role === 'client') {
+                    $clientProfile = ClientProfile::where('user_id', $user->id)->first();
+                    if ($clientProfile) {
+                        $profileId = $clientProfile->id;
+                    }
+                }
     
                 return response()->json([
                     'message' => 'Login successful',
                     'role' => $role,
                     'token' => $token,
+                    'profile_id' => $profileId,
                 ], 200);
             } else {
                 return response()->json([
-                    'message' => 'Invalid credentials',
+                    'status' => false,
+                    'message' => 'Invalid credentials'
                 ], 401);
             }
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'An error occurred during login',
-                'error' => $e->getMessage(),
-            ], 500);
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
@@ -128,5 +143,7 @@ class AuthController extends Controller
             ], 500);
         }
     }
+
+
     
 }
