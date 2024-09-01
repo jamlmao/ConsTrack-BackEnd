@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Exception;
+use Carbon\Carbon;
 
 class PController extends Controller
 {
@@ -33,7 +34,7 @@ class PController extends Controller
                 'pj_pdf' => 'nullable|string', // Base64 encoded PDF
             ]);
 
-            $validatedData['status'] = 'in_progress'; // Set status to in_progress by default
+            $validatedData['status'] = 'IP'; // Set status to in_progress by default
 
             // Decode the base64 encoded image
             if (!empty($validatedData['pj_image'])) {
@@ -116,73 +117,12 @@ class PController extends Controller
             return response()->json(['message' => 'Failed to create project', 'error' => $e->getMessage()], 500);
         }
     }
-
-
-    public function addTask(Request $request)
-    {
-        // Validate the incoming request
-        $request->validate([
-            'project_id' => 'required|integer',
-            'pt_task_name' => 'required|string',
-            'pt_completion_date' => 'required|date',
-            'pt_starting_date' => 'required|date',
-            'pt_photo_task' => 'nullable|string', // Base64 encoded image
-            'pt_file_task' => 'nullable|string',
-            'pt_used_budget' => 'required|integer',
-        ]);
-
-        // Decode the base64 encoded photo, if present
-        $decodedImage = base64_decode($request->pt_photo_task, true);
-        if ($decodedImage === false) {
-            Log::error('Invalid base64 image');
-            return response()->json(['message' => 'Invalid base64 image'], 400);
-        }
-
-        $decodedfile = base64_decode($request->pt_file_task, true);
-        if ($decodedfile === false) {
-            Log::error('Invalid base64 file');
-            return response()->json(['message' => 'Invalid base64 file'], 400);
-        }
+    
 
 
 
-        $imageName = time() . '.png';
-        $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
 
-        if (!$isSaved) {
-            Log::error('Failed to save image');
-            return response()->json(['message' => 'Failed to save image'], 500);
-        }
-
-        $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
-
-        $fileName = time() . '.png';
-        $FileisSaved = Storage::disk('public')->put('file/tasks/' . $fileName, $fileImage);
-
-        if (!$FileisSaved) {
-            Log::error('Failed to save file');
-            return response()->json(['message' => 'Failed to save file'], 500);
-        }
-
-        $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
-
-        $filePath = asset('storage/file/task/'.$fileName);
-
-        // Create a new task
-        $task = Task::create([
-            'project_id' => $request->project_id,
-            'pt_task_name' => $request->pt_task_name,
-            'pt_completion_date' => $request->pt_completion_date,
-            'pt_starting_date' => $request->pt_starting_date,
-            'pt_photo_task' => $photoPath, // Set the photo path
-            'pt_used_budget' => $request->pt_used_budget,
-        ]);
-
-        Log::info('Task created successfully', ['task' => $task]);
-        return response()->json($task, 201); // Return the newly created task
-    }
-
-
+    /// Fetch all projects for the staff
 
     public function getProjectsForStaff()
     {
@@ -234,8 +174,9 @@ class PController extends Controller
         }
     }
 
+    //fetch projects counts for the company
 
-    public function getProjectsCounts($staffId)
+    public function getProjectsCounts($staffId) 
     {
         try {
             // Fetch the staff's company name
@@ -259,7 +200,7 @@ class PController extends Controller
     }
 
  
-    
+    //get project and client details
     public function getProjectAndClientDetails($projectId)
     {
         // Get the logged-in user's ID
@@ -298,11 +239,119 @@ class PController extends Controller
     }
 
 
+
+
+    // Add a new task to a project
+    public function addTask(Request $request, $project_id)
+    {
+        try {
+            // Validate the incoming request
+            $validatedData = $request->validate([
+                'pt_task_name' => 'required|string',
+                'pt_completion_date' => 'required|date',
+                'pt_starting_date' => 'required|date',
+                'pt_photo_task' => 'nullable|string', // Base64 encoded image
+                'pt_file_task' => 'nullable|string',
+                'pt_allocated_budget' => 'required|integer',
+                'pt_task_desc' => 'required|string', // Should be dropdown
+            ]);
+    
+            // Add the project_id to the validated data
+            $validatedData['project_id'] = $project_id;
+    
+            // Check if the completion date has passed
+            $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+            $currentDate = Carbon::now();
+    
+            if ($completionDate->isPast()) {
+                $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+            } else {
+                $validatedData['pt_status'] = 'IP'; // Set status to 'IP' otherwise
+            }
+    
+             // Decode the base64 encoded photo, if present
+            if (!empty($validatedData['pt_photo_task'])) {
+                $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+                // Save the decoded image to a file or storage
+                $imageName = time() . '.jpg';
+                $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
+
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+
+                $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+                $validatedData['pt_photo_task'] = $photoPath; // Set the photo path
+            }
+    
+            // Decode the base64 encoded PDF, if present
+            if (!empty($validatedData['pt_file_task'])) {
+                $decodedPdf = base64_decode($validatedData['pt_file_task'], true);
+                if ($decodedPdf === false) {
+                    Log::error('Invalid base64 PDF');
+                    return response()->json(['message' => 'Invalid base64 PDF'], 400);
+                }
+
+                $pdfName = time() . '.pdf';
+                $isSaved = Storage::disk('public')->put('pdfs/tasks/' . $pdfName, $decodedPdf);
+
+                if (!$isSaved) {
+                    Log::error('Failed to save PDF');
+                    return response()->json(['message' => 'Failed to save PDF'], 500);
+                }
+
+                $pdfPath = asset('storage/pdfs/tasks/' . $pdfName); // Set the PDF path
+                $validatedData['pt_file_task'] = $pdfPath; // Set the PDF path
+            }
+
+    
+            // Create a new task with the validated data
+            $task = Task::create($validatedData);
+            $task->photo_path = $validatedData['pt_photo_task'] ?? null;
+            $task->pdf_path = $validatedData['pt_file_task'] ?? null;
+            $task->pt_task_desc = $validatedData['pt_task_desc'];
+        
+            return response()->json(['message' => 'Task created successfully', 'task' => $task], 201);
+        } catch (Exception $e) {
+            Log::error('Failed to add task: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
+        }
+    }
+
     
 
+
+    //fetchproject tasks
+    public function getProjectTasks($project_id)
+    {
+        try {
+            // Fetch all tasks related to the given project ID
+            $tasks = Task::where('project_id', $project_id)->get();
+
+            // Return the tasks in a JSON response
+            return response()->json(['tasks' => $tasks], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch project tasks: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch project tasks', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+
+
+   //for generating SOWA
     public function downloadProjectsPdf()
     {
         return $this->generateProjectsPdf();
     }
+
+
+
+
+
 
 }

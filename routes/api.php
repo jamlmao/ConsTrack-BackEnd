@@ -33,7 +33,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
-    Route::post('/tasks', [PController::class, 'addTask']);
+    Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+    Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);

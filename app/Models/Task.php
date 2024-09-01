@@ -17,7 +17,11 @@ class Task extends Model
         'pt_completion_date',
         'pt_starting_date',
         'pt_photo_task',
-        'pt_used_budget',
+        'pt_allocated_budget',
+        'pt_task_desc',
+        'update_img',
+        'update_file'
+
     ];
 
     public function project()
