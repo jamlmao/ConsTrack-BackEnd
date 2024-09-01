@@ -342,8 +342,97 @@ class PController extends Controller
     }
 
 
+    public function getProjectTasksGroupedByMonth($project_id)
+{
+    try {
+        // Fetch all tasks related to the given project ID and group them by month and year
+        $tasks = DB::table('project_tasks')
+            ->where('project_id', $project_id)
+            ->select(
+                DB::raw('YEAR(pt_starting_date) as year'),
+                DB::raw('MONTH(pt_starting_date) as month'),
+                DB::raw('COUNT(id) as task_count')
+            )
+            ->groupBy('year', 'month')
+            ->orderBy('year', 'asc')
+            ->orderBy('month', 'asc')
+            ->get();
 
-   //for generating SOWA
+        // Map month numbers to month names
+        $monthNames = [
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+        ];
+
+        $tasks = $tasks->map(function ($task) use ($monthNames) {
+            $task->month = $monthNames[$task->month];
+            return $task;
+        });
+
+        // Return the tasks in a JSON response
+        return response()->json(['tasks_per_month' => $tasks], 200);
+    } catch (Exception $e) {
+        Log::error('Failed to fetch project tasks grouped by month: ' . $e->getMessage());
+        return response()->json(['message' => 'Failed to fetch project tasks grouped by month', 'error' => $e->getMessage()], 500);
+    }
+}
+
+    public function getProjectsPerMonth() // fetch projects per month
+    {
+        try {
+            // Get the logged-in staff profile
+            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+    
+            if (!$staffProfile) {
+                Log::error('Staff profile not found for user_id: ' . Auth::id());
+                return response()->json(['error' => 'Staff profile not found'], 404);
+            }
+    
+            // Get the company name from the staff profile
+            $companyName = $staffProfile->company_name;
+            Log::info('Fetching projects for company: ' . $companyName);
+    
+            // Fetch projects under the same company and group them by month
+            $projects = DB::table('projects')
+                ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+                ->where('client_profiles.company_name', $companyName)
+                ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+                ->select(
+                    DB::raw('YEAR(projects.starting_date) as year'),
+                    DB::raw('MONTH(projects.starting_date) as month'),
+                    DB::raw('COUNT(projects.id) as project_count')
+                )
+                ->groupBy('year', 'month')
+                ->orderBy('year', 'asc')
+                ->orderBy('month', 'asc')
+                ->get();
+    
+            // Map month numbers to month names
+            $monthNames = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+    
+            $projects = $projects->map(function ($project) use ($monthNames) {
+                $project->month = $monthNames[$project->month];
+                return $project;
+            });
+    
+            Log::info('Projects fetched successfully for company: ' . $companyName);
+            return response()->json(['projects_per_month' => $projects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects per month: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch projects per month', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+
+
+
+
+   //for generating SOWA // need to make the generateProjectsPdf method in the same controller
     public function downloadProjectsPdf()
     {
         return $this->generateProjectsPdf();

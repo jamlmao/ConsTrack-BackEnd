@@ -268,6 +268,7 @@ class AController extends Controller
             return response()->json(['error' => 'Failed to update staff profile'], 500);
         }
     }
+
     public function getClientsUnderSameCompany()
     {
         // Get the logged-in staff profile
@@ -289,8 +290,104 @@ class AController extends Controller
             ->distinct() // Ensure unique records
             ->get();
 
-        return response()->json(['clients' => $clients], 200);
+        // Count the number of clients
+        $clientCount = $clients->count();
+
+        return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
     }
+
+    public function getClientsCountByMonth()
+    {
+        try {
+            // Get the logged-in staff profile
+            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+    
+            if (!$staffProfile) {
+                return response()->json(['error' => 'Staff profile not found'], 404);
+            }
+    
+            // Get the company name from the staff profile
+            $companyName = $staffProfile->company_name;
+    
+            // Fetch clients under the same company and group them by month
+            $clients = DB::table('client_profiles')
+                ->where('company_name', $companyName)
+                ->whereNotNull('company_name') // Ensure company_name is not null
+                ->select(
+                    DB::raw('YEAR(created_at) as year'),
+                    DB::raw('MONTH(created_at) as month'),
+                    DB::raw('COUNT(id) as client_count')
+                )
+                ->groupBy('year', 'month')
+                ->orderBy('year', 'asc')
+                ->orderBy('month', 'asc')
+                ->get();
+    
+            // Map month numbers to month names
+            $monthNames = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+    
+            $clients = $clients->map(function ($client) use ($monthNames) {
+                $client->month = $monthNames[$client->month];
+                return $client;
+            });
+    
+            return response()->json(['clients_per_month' => $clients], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch clients count by month: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch clients count by month', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+
+    public function getStaffCountByMonth()
+{
+    try {
+        // Get the logged-in staff profile
+        $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+
+        if (!$staffProfile) {
+            return response()->json(['error' => 'Staff profile not found'], 404);
+        }
+
+        // Get the company name from the staff profile
+        $companyName = $staffProfile->company_name;
+
+        // Fetch staff under the same company and group them by month
+        $staffs = DB::table('staff_profiles')
+            ->where('company_name', $companyName)
+            ->whereNotNull('company_name') // Ensure company_name is not null
+            ->select(
+                DB::raw('YEAR(created_at) as year'),
+                DB::raw('MONTH(created_at) as month'),
+                DB::raw('COUNT(id) as staff_count')
+            )
+            ->groupBy('year', 'month')
+            ->orderBy('year', 'asc')
+            ->orderBy('month', 'asc')
+            ->get();
+
+        // Map month numbers to month names
+        $monthNames = [
+            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+        ];
+
+        $staffs = $staffs->map(function ($staff) use ($monthNames) {
+            $staff->month = $monthNames[$staff->month];
+            return $staff;
+        });
+
+        return response()->json(['staffs_per_month' => $staffs], 200);
+    } catch (Exception $e) {
+        Log::error('Failed to fetch staff count by month: ' . $e->getMessage());
+        return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);
+    }
+}
 
     public function getLoggedInUserNameAndId()
     {
