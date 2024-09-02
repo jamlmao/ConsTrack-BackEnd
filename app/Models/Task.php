@@ -17,6 +17,7 @@ class Task extends Model
         'pt_completion_date',
         'pt_starting_date',
         'pt_photo_task',
+        'pt_file_task',
         'pt_allocated_budget',
         'pt_task_desc',
         'update_img',

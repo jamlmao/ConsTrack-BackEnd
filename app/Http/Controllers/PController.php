@@ -15,6 +15,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 use Exception;
 use Carbon\Carbon;
+use Intervention\Image\Facades\Image;
 
 class PController extends Controller
 {
@@ -277,7 +278,7 @@ class PController extends Controller
                     return response()->json(['message' => 'Invalid base64 image'], 400);
                 }
                 // Save the decoded image to a file or storage
-                $imageName = time() . '.jpg';
+                $imageName = time() . '.webp';
                 $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
 
                 if (!$isSaved) {
@@ -323,21 +324,105 @@ class PController extends Controller
         }
     }
 
-    
+    public function getProjectTaskImages($project_id)
+        {
+            try {
+                // Fetch tasks related to the given project ID, selecting only the update_img and pt_photo_task columns
+                $tasks = Task::where('project_id', $project_id)->get(['update_img', 'pt_photo_task']);
 
+                // Process images to lower their quality
+                foreach ($tasks as $task) {
+                    if (!empty($task->pt_photo_task)) {
+                        $task->pt_photo_task = $this->processImage($task->pt_photo_task);
+                    }
+                    if (!empty($task->update_img)) {
+                        $task->update_img = $this->processImage($task->update_img);
+                    }
+                }
+
+                // Return the tasks in a JSON response
+                return response()->json(['tasks' => $tasks], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch project tasks with images: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch project tasks with images', 'error' => $e->getMessage()], 500);
+            }
+    }
+
+    private function processImage($imagePath)
+    {
+        try {
+            // Load the image
+            $image = Image::make(public_path($imagePath));
+
+            // Resize the image to a width of 800 and constrain aspect ratio (auto height)
+            $image->resize(800, null, function ($constraint) {
+                $constraint->aspectRatio();
+            });
+
+            // Save the image with lower quality (50%)
+            $imageName = pathinfo($imagePath, PATHINFO_FILENAME) . '_low_quality.webp';
+            $image->save(public_path('storage/photos/tasks/' . $imageName), 50, 'webp');
+
+            // Return the new image path
+            return asset('storage/photos/tasks/' . $imageName);
+        } catch (Exception $e) {
+            Log::error('Failed to process image: ' . $e->getMessage());
+            return $imagePath; // Return original path if processing fails
+        }
+    }
 
     //fetchproject tasks
     public function getProjectTasks($project_id)
     {
         try {
             // Fetch all tasks related to the given project ID
-            $tasks = Task::where('project_id', $project_id)->get();
+            $tasks = Task::where('project_id', $project_id)->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'pt_task_desc', 'update_img', 'update_file', 'created_at', 'updated_at', 'pt_file_task']);
 
             // Return the tasks in a JSON response
             return response()->json(['tasks' => $tasks], 200);
         } catch (Exception $e) {
             Log::error('Failed to fetch project tasks: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch project tasks', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+
+    public function getSortedProjectTasks($project_id)
+    {
+        try {
+            // Define the custom order for pt_task_desc
+            $customOrder = [
+                'GENERAL REQUIREMENTS',
+                'SITE WORKS',
+                'CONCRETE & MASONRY WORKS',
+                'METAL REINFORCEMENT WORKS',
+                'FORMS & SCAFFOLDINGS',
+                'STEEL FRAMING WORK',
+                'TINSMITHRY WORKS',
+                'PLASTERING WORKS',
+                'PAINTS WORKS',
+                'PLUMBING WORKS',
+                'ELECTRICAL WORKS',
+                'CEILING WORKS',
+                'ARCHITECTURAL'
+            ];
+
+            // Fetch all tasks related to the given project ID
+            $tasks = Task::where('project_id', $project_id)->get();
+
+            // Sort the tasks based on the custom order
+            $sortedTasks = $tasks->sort(function ($a, $b) use ($customOrder) {
+                $posA = array_search($a->pt_task_desc, $customOrder);
+                $posB = array_search($b->pt_task_desc, $customOrder);
+
+                return $posA - $posB;
+            });
+
+            // Return the sorted tasks in a JSON response
+            return response()->json(['tasks' => $sortedTasks->values()->all()], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
         }
     }
 
