@@ -68,6 +68,7 @@ class AController extends Controller
                 'name' => $validatedData['name'],
                 'email' => $validatedData['email'],
                 'password' => Hash::make($validatedData['password']),
+                'role' => 'staff',
             ]);
 
             // Create the staff profile with the company ID and user ID
@@ -245,28 +246,35 @@ class AController extends Controller
     {
         // Get the logged-in staff profile
         $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
-
+    
         if (!$staffProfile) {
             return response()->json(['error' => 'Staff profile not found'], 404);
         }
-
-        // Get the company name from the staff profile
-        $companyName = $staffProfile->company_name;
-
+    
+        // Get the company ID from the staff profile
+        $companyId = $staffProfile->company_id;
+    
         // Get clients under the same company and their project statuses
         $clients = DB::table('client_profiles')
             ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
-            ->where('client_profiles.company_name', $companyName)
-            ->whereNotNull('client_profiles.company_name') // Ensure company_name is not null
+            ->where('client_profiles.company_id', $companyId)
+            ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
             ->select('client_profiles.*', 'projects.status as project_status')
             ->distinct() // Ensure unique records
             ->get();
-
+    
         // Count the number of clients
         $clientCount = $clients->count();
-
+    
         return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
     }
+
+
+
+
+
+
+
 
     public function getClientsCountByMonth()
     {
@@ -279,12 +287,12 @@ class AController extends Controller
             }
     
             // Get the company name from the staff profile
-            $companyName = $staffProfile->company_name;
+            $companyId = $staffProfile->company_id;
     
             // Fetch clients under the same company and group them by month
             $clients = DB::table('client_profiles')
-                ->where('company_name', $companyName)
-                ->whereNotNull('company_name') // Ensure company_name is not null
+                ->where('company_id', $companyId)
+                ->whereNotNull('company_id') // Ensure company_name is not null
                 ->select(
                     DB::raw('YEAR(created_at) as year'),
                     DB::raw('MONTH(created_at) as month'),
@@ -316,98 +324,101 @@ class AController extends Controller
 
 
     public function getStaffCountByMonth()
-{
-    try {
-        // Get the logged-in staff profile
-        $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+    {
+        try {
+            // Get the logged-in staff profile
+            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
 
-        if (!$staffProfile) {
-            return response()->json(['error' => 'Staff profile not found'], 404);
+            if (!$staffProfile) {
+                return response()->json(['error' => 'Staff profile not found'], 404);
+            }
+
+            // Get the company name from the staff profile
+            $companyId = $staffProfile->company_id;
+
+            // Fetch staff under the same company and group them by month
+            $staffs = DB::table('staff_profiles')
+                ->where('company_id', $companyId)
+                ->whereNotNull('company_id') // Ensure company_name is not null
+                ->select(
+                    DB::raw('YEAR(created_at) as year'),
+                    DB::raw('MONTH(created_at) as month'),
+                    DB::raw('COUNT(id) as staff_count')
+                )
+                ->groupBy('year', 'month')
+                ->orderBy('year', 'asc')
+                ->orderBy('month', 'asc')
+                ->get();
+
+            // Map month numbers to month names
+            $monthNames = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+
+            $staffs = $staffs->map(function ($staff) use ($monthNames) {
+                $staff->month = $monthNames[$staff->month];
+                return $staff;
+            });
+
+            return response()->json(['staffs_per_month' => $staffs], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch staff count by month: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);
         }
-
-        // Get the company name from the staff profile
-        $companyName = $staffProfile->company_name;
-
-        // Fetch staff under the same company and group them by month
-        $staffs = DB::table('staff_profiles')
-            ->where('company_name', $companyName)
-            ->whereNotNull('company_name') // Ensure company_name is not null
-            ->select(
-                DB::raw('YEAR(created_at) as year'),
-                DB::raw('MONTH(created_at) as month'),
-                DB::raw('COUNT(id) as staff_count')
-            )
-            ->groupBy('year', 'month')
-            ->orderBy('year', 'asc')
-            ->orderBy('month', 'asc')
-            ->get();
-
-        // Map month numbers to month names
-        $monthNames = [
-            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
-            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
-            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
-        ];
-
-        $staffs = $staffs->map(function ($staff) use ($monthNames) {
-            $staff->month = $monthNames[$staff->month];
-            return $staff;
-        });
-
-        return response()->json(['staffs_per_month' => $staffs], 200);
-    } catch (Exception $e) {
-        Log::error('Failed to fetch staff count by month: ' . $e->getMessage());
-        return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);
-    }
 }
 
-    public function getLoggedInUserNameAndId()
-    {
-        $user = Auth::user();
-        $response = [
-            'name' => $user->name,
-            'id' => $user->id,
-            'role' => $user->role,
-            'email' => $user->email,
-        ];
-    
-        if ($user->role === 'staff') {
-            $staffProfile = StaffProfile::where('user_id', $user->id)->first();
-            if ($staffProfile) {
-                $response['staff'] = [
-                    'id' => $staffProfile->id,
-                    'first_name' => $staffProfile->first_name,
-                    'last_name' => $staffProfile->last_name,
-                    'sex' => $staffProfile->sex,
-                    'address' => $staffProfile->address,
-                    'city' => $staffProfile->city,
-                    'country' => $staffProfile->country,
-                    'zipcode' => $staffProfile->zipcode,
-                    'phone_number' => $staffProfile->phone_number,
-                    'company_name' => $staffProfile->company_name,
-                ];
+        public function getLoggedInUserNameAndId()
+        {
+            $user = Auth::user();
+            $response = [
+                'name' => $user->name,
+                'id' => $user->id,
+                'role' => $user->role,
+                'email' => $user->email,
+            ];
+
+            if ($user->role === 'staff') {
+                $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+                if ($staffProfile) {
+                    $company = Company::find($staffProfile->company_id);
+                    $response['staff'] = [
+                        'id' => $staffProfile->id,
+                        'first_name' => $staffProfile->first_name,
+                        'last_name' => $staffProfile->last_name,
+                        'sex' => $staffProfile->sex,
+                        'address' => $staffProfile->address,
+                        'city' => $staffProfile->city,
+                        'country' => $staffProfile->country,
+                        'zipcode' => $staffProfile->zipcode,
+                        'phone_number' => $staffProfile->phone_number,
+                        'company_id' => $staffProfile->company_id,
+                        'company_name' => $company ? $company->company_name : null, // Get company_name from company_id
+                    ];
+                }
+            } elseif ($user->role === 'client') {
+                $clientProfile = ClientProfile::where('user_id', $user->id)->first();
+                if ($clientProfile) {
+                    $company = Company::find($clientProfile->company_id);
+                    $response['client_details'] = [
+                        'id' => $clientProfile->id,
+                        'first_name' => $clientProfile->first_name,
+                        'last_name' => $clientProfile->last_name,
+                        'sex' => $clientProfile->sex,
+                        'address' => $clientProfile->address,
+                        'city' => $clientProfile->city,
+                        'country' => $clientProfile->country,
+                        'zipcode' => $clientProfile->zipcode,
+                        'phone_number' => $clientProfile->phone_number,
+                        'company_id' => $clientProfile->company_id,
+                        'company_name' => $company ? $company->company_name : null, 
+                    ];
+                }
             }
-        } elseif ($user->role === 'client') {
-            $clientProfile = ClientProfile::where('user_id', $user->id)->first();
-            if ($clientProfile) {
-                $response['client_details'] = [
-                    'id' => $clientProfile->id,
-                    'first_name' => $clientProfile->first_name,
-                    'last_name' => $clientProfile->last_name,
-                    'sex' => $clientProfile->sex,
-                    'address' => $clientProfile->address,
-                    'city' => $clientProfile->city,
-                    'country' => $clientProfile->country,
-                    'zipcode' => $clientProfile->zipcode,
-                    'phone_number' => $clientProfile->phone_number,
-                    'company_name' => $clientProfile->company_name,
-                ];
-            }
+
+            return response()->json($response);
         }
-    
-        return response()->json($response);
-    }
-    
    
     public function sendOtp(Request $request)
     {
@@ -478,10 +489,10 @@ class AController extends Controller
             $clientCount = ClientProfile::count();
     
             // Fetch unique company names from client_profiles
-            $clientCompanies = ClientProfile::distinct()->pluck('company_name')->toArray();
+            $clientCompanies = ClientProfile::distinct()->pluck('company_id')->toArray();
     
             // Fetch unique company names from staff_profiles
-            $staffCompanies = StaffProfile::distinct()->pluck('company_name')->toArray();
+            $staffCompanies = StaffProfile::distinct()->pluck('company_id')->toArray();
     
             // Merge and count unique company names
             $allCompanies = array_unique(array_merge($clientCompanies, $staffCompanies));
