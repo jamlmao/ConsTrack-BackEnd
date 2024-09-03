@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-
+use App\Models\Project;
+use App\Models\Company;
 
 class AController extends Controller
 {
@@ -39,68 +40,101 @@ class AController extends Controller
             'address' => 'required|string|max:60',
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-            'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            'zipcode' => 'required|string|max:10',
+            'phone_number' => 'required|string|max:15',
+            'company_name' => 'required|string|max:60', // Add company_name to validation
         ]);
-    
-        try {
-            DB::transaction(function () use ($request, $validatedData) {
-                // Create the user
-                $user = User::create([
-                    'name' => $validatedData['name'],
-                    'email' => $validatedData['email'],
-                    'password' => bcrypt($validatedData['password']),
-                    'role' => 'staff',
+
+        $staff = null; // Initialize the $staff variable
+
+        DB::transaction(function () use ($request, $validatedData, &$staff) {
+            // Check if the company already exists
+            $company = Company::where('company_name', $request->input('company_name'))->first();
+
+            if ($company) {
+                // Use the existing company's ID
+                $companyId = $company->id;
+            } else {
+                // Create a new company and get its ID
+                $newCompany = Company::create([
+                    'company_name' => $request->input('company_name'),
+                    // Add other necessary fields for the company
                 ]);
-    
-                // Create the staff profile
-                $staffProfile = StaffProfile::create([
-                    'user_id' => $user->id,
-                    'first_name' => $validatedData['first_name'],
-                    'last_name' => $validatedData['last_name'],
-                    'sex' => $validatedData['sex'],
-                    'address' => $validatedData['address'],
-                    'city' => $validatedData['city'],
-                    'country' => $validatedData['country'],
-                    'zipcode' => $validatedData['zipcode'],
-                    'phone_number' => $validatedData['phone_number'],
-                    'company_name' => $validatedData['company_name'],
-                ]);
-    
-                // Log the creation
-                Log::info('Staff account created successfully', ['user_id' => $user->id, 'staff_profile_id' => $staffProfile->id]);
-            });
-    
-            return response()->json(['status' => true, 'message' => 'Staff account created successfully'], 201);
-        } catch (Exception $e) {
-            // Log the error
-            Log::error('Failed to create staff account: ' . $e->getMessage());
-    
-            return response()->json(['status' => false, 'message' => 'Failed to create staff account'], 500);
-        }
+                $companyId = $newCompany->id;
+            }
+
+            // Create the user first
+            $user = User::create([
+                'name' => $validatedData['name'],
+                'email' => $validatedData['email'],
+                'password' => Hash::make($validatedData['password']),
+            ]);
+
+            // Create the staff profile with the company ID and user ID
+            $staff = StaffProfile::create([
+                'user_id' => $user->id, // Include the user_id
+                'first_name' => $validatedData['first_name'],
+                'last_name' => $validatedData['last_name'],
+                'sex' => $validatedData['sex'],
+                'address' => $validatedData['address'],
+                'city' => $validatedData['city'],
+                'company_id' => $companyId, // Use the company ID
+                'country' => $validatedData['country'],
+                'zipcode' => $validatedData['zipcode'],
+                'phone_number' => $validatedData['phone_number'],
+            ]);
+
+            // Capture the new values for the audit log
+            $newValues = [
+                'name' => $user->name,
+                'email' => $user->email,
+                'password' => $user->password,
+                'first_name' => $staff->first_name,
+                'last_name' => $staff->last_name,
+                'sex' => $staff->sex,
+                'address' => $staff->address,
+                'city' => $staff->city,
+                'country' => $staff->country,
+                'zipcode' => $staff->zipcode,
+                'company_name' => $request->input('company_name'), // Use the inputted company name
+                'phone_number' => $staff->phone_number,
+            ];
+
+            // Log the creation of the staff profile
+            AuditLog::create([
+                'user_id' => $user->id,
+                'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
+                'action' => 'create',
+                'old_values' => null,
+                'new_values' => json_encode($newValues),
+            ]);
+        });
+
+        // Return a response or redirect as needed
+        return response()->json(['message' => 'Staff created successfully', 'staff' => $staff], 201);
     }
-  
+
+
+
     public function createClient(Request $request)
     {
         $user = Auth::user();
-    
+
         if (!in_array($user->role, ['admin', 'staff'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unauthorized'
             ], 403);
         }
-    
-        // Ensure the user has an associated staff profile
-        if (!$user->staffProfile) {
+
+        if ($user->role !== 'admin' && !$user->staffProfile) {
             return response()->json([
                 'status' => false,
                 'message' => 'User does not have an associated staff profile'
             ], 400);
         }
-    
-        $request->validate([
+
+        $validatedData = $request->validate([
             'name' => 'required|string|max:20',
             'email' => 'required|string|email|max:20|unique:users',
             'password' => [
@@ -119,47 +153,68 @@ class AController extends Controller
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
             'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-           'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            'company_name' => 'required_if:user.role,admin|string|max:60', // Add company_name validation for admin
         ]);
-    
+
+        $client = null; // Initialize the $client variable
+        $company = null; // Initialize the $company variable
+
         try {
-            DB::transaction(function () use ($request, $user) {
+            DB::transaction(function () use ($request, $user, $validatedData, &$client, &$company) {
                 $client = User::create([
-                    'name' => $request->name,
-                    'email' => $request->email,
-                    'password' => Hash::make($request->password),
+                    'name' => $validatedData['name'],
+                    'email' => $validatedData['email'],
+                    'password' => Hash::make($validatedData['password']),
                     'role' => 'client',
                     'created_by' => $user->id, // Track who created the client
                     'updated_by' => $user->id, // Track who last updated the client
                 ]);
-    
+
+                $companyName = $user->role === 'admin' ? $validatedData['company_name'] : $user->staffProfile->company_name;
+
+                // Check if the company already exists
+                $company = Company::where('company_name', $companyName)->first();
+
+                if ($company) {
+                    // Use the existing company's ID
+                    $companyId = $company->id;
+                } else {
+                    // Create a new company and get its ID
+                    $company = Company::create([
+                        'company_name' => $companyName,
+                        // Add other necessary fields for the company
+                    ]);
+                    $companyId = $company->id;
+                }
+
                 $client->ClientProfile()->create([
-                    'first_name' => $request->first_name,
-                    'last_name' => $request->last_name,
-                    'sex' => $request->sex,
-                    'address' => $request->address,
-                    'city' => $request->city,
-                    'country' => $request->country,
-                    'zipcode' => $request->zipcode,
-                    'company_name' => $user->staffProfile->company_name, // Automatically set the company name from staff profile
-                    'phone_number' => $request->phone_number,
+                    'first_name' => $validatedData['first_name'],
+                    'last_name' => $validatedData['last_name'],
+                    'sex' => $validatedData['sex'],
+                    'address' => $validatedData['address'],
+                    'city' => $validatedData['city'],
+                    'country' => $validatedData['country'],
+                    'zipcode' => $validatedData['zipcode'],
+                    'company_id' => $companyId, // Set the company ID
+                    'phone_number' => $validatedData['phone_number'],
                 ]);
-    
+
                 $newValues = [
                     'name' => $client->name,
                     'email' => $client->email,
                     'password' => $client->password,
-                    'first_name' => $request->first_name,
-                    'last_name' => $request->last_name,
-                    'sex' => $request->sex,
-                    'address' => $request->address,
-                    'city' => $request->city,
-                    'country' => $request->country,
-                    'zipcode' => $request->zipcode,
-                    'company_name' => $user->staffProfile->company_name, // Automatically set the company name from staff profile
-                    'phone_number' => $request->phone_number,
+                    'first_name' => $validatedData['first_name'],
+                    'last_name' => $validatedData['last_name'],
+                    'sex' => $validatedData['sex'],
+                    'address' => $validatedData['address'],
+                    'city' => $validatedData['city'],
+                    'country' => $validatedData['country'],
+                    'zipcode' => $validatedData['zipcode'],
+                    'company_id' => $companyId, // Set the company ID
+                    'phone_number' => $validatedData['phone_number'],
                 ];
-    
+
                 AuditLog::create([
                     'user_id' => $client->id,
                     'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
@@ -168,8 +223,12 @@ class AController extends Controller
                     'new_values' => json_encode($newValues),
                 ]);
             });
-    
-            return response()->json(['message' => 'Client created successfully'], 201);
+
+            return response()->json([
+                'message' => 'Client created successfully',
+                'client' => $client,
+                'company' => $company
+            ], 201);
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
@@ -178,96 +237,9 @@ class AController extends Controller
         }
     }
 
-    public function update(Request $request, $id)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255',
-            'password' => 'nullable|string|min:8',
-            'first_name' => 'required|string|max:20',
-            'last_name' => 'required|string|max:20',
-            'sex' => 'required|in:M,F',
-            'address' => 'required|string|max:60',
-            'city' => 'required|string|max:60',
-            'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-            'company_name' => 'required|string|max:60',
-            'phone_number' => 'required|string|regex:/^\d{11,15}$/',
-        ]);
 
-        $user = User::find($id);
 
-        if (!$user) {
-            return response()->json(['error' => 'User not found'], 404);
-        }
 
-        $oldValues = [ 
-            'name' => $user->name,
-            'email' => $user->email,
-            'password' => $user->password,
-            'first_name' => $user->StaffProfile->first_name,
-            'last_name' => $user->StaffProfile->last_name,
-            'sex' => $user->StaffProfile->sex,
-            'address' => $user->StaffProfile->address,
-            'city' => $user->StaffProfile->city,
-            'country' => $user->StaffProfile->country,
-            'zipcode' => $user->StaffProfile->zipcode,
-            'company_name' => $user->StaffProfile->company_name,
-            'phone_number' => $user->StaffProfile->phone_number,
-        ];
-
-        try {
-            DB::transaction(function () use ($request, $user, $oldValues) {
-                $user->update([
-                    'name' => $request->name,
-                    'email' => $request->email,
-                    'password' => $request->password ? Hash::make($request->password) : $user->password,
-                ]);
-
-                $user->StaffProfile()->updateOrCreate(
-                    ['user_id' => $user->id],
-                    [
-                        'first_name' => $request->first_name,
-                        'last_name' => $request->last_name,
-                        'sex' => $request->sex,
-                        'address' => $request->address,
-                        'city' => $request->city,
-                        'country' => $request->country,
-                        'zipcode' => $request->zipcode,
-                        'company_name' => $request->company_name,
-                        'phone_number' => $request->phone_number,
-                    ]
-                );
-
-                $newValues = [
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'password' => $user->password,
-                    'first_name' => $request->first_name,
-                    'last_name' => $request->last_name,
-                    'sex' => $request->sex,
-                    'address' => $request->address,
-                    'city' => $request->city,
-                    'country' => $request->country,
-                    'zipcode' => $request->zipcode,
-                    'company_name' => $request->company_name,
-                    'phone_number' => $request->phone_number,
-                ];
-
-                AuditLog::create([
-                    'user_id' => $user->id,
-                    'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
-                    'action' => 'update',
-                    'old_values' => json_encode($oldValues),
-                    'new_values' => json_encode($newValues),
-                ]);
-            });
-
-            return response()->json(['message' => 'Staff profile updated successfully'], 200);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to update staff profile'], 500);
-        }
-    }
 
     public function getClientsUnderSameCompany()
     {
@@ -494,5 +466,91 @@ class AController extends Controller
         $user->save();
     
         return response()->json(['message' => 'Password updated successfully'], 200);
+    }  
+
+    public function getUserCounts()
+    {
+        try {
+            // Fetch the count of staff
+            $staffCount = StaffProfile::count();
+    
+            // Fetch the count of clients
+            $clientCount = ClientProfile::count();
+    
+            // Fetch unique company names from client_profiles
+            $clientCompanies = ClientProfile::distinct()->pluck('company_name')->toArray();
+    
+            // Fetch unique company names from staff_profiles
+            $staffCompanies = StaffProfile::distinct()->pluck('company_name')->toArray();
+    
+            // Merge and count unique company names
+            $allCompanies = array_unique(array_merge($clientCompanies, $staffCompanies));
+            $companyCount = count($allCompanies);
+    
+            // Fetch the count of projects with status "IP" (In Progress)
+            $inProgressProjectCount = Project::where('status', 'IP')->count();
+    
+            // Fetch the count of projects with status "C" (Completed)
+            $completedProjectCount = Project::where('status', 'C')->count();
+    
+            // Fetch the count of projects with status "D" (Delayed)
+            $delayedProjectCount = Project::where('status', 'D')->count();
+    
+            // Return the counts in a JSON response
+            return response()->json([
+                'staffcount' => $staffCount,
+                'clientcount' => $clientCount,
+                'companycount' => $companyCount,
+                'inProgressProjectCount' => $inProgressProjectCount,
+                'completedProjectCount' => $completedProjectCount,
+                'delayedProjectCount' => $delayedProjectCount
+            ], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch counts: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch counts', 'error' => $e->getMessage()], 500);
+        }
     }
+
+
+    
+    public function getMonthlyCounts()
+    {
+        try {
+            $currentYear = Carbon::now()->year;
+            $monthlyCounts = [];
+            $months = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+    
+            // Loop through each month of the current year
+            for ($month = 1; $month <= 12; $month++) {
+                // Fetch the count of clients created in the current month
+                $clientCount = ClientProfile::whereYear('created_at', $currentYear)
+                                            ->whereMonth('created_at', $month)
+                                            ->count();
+    
+                // Fetch the count of staff created in the current month
+                $staffCount = StaffProfile::whereYear('created_at', $currentYear)
+                                          ->whereMonth('created_at', $month)
+                                          ->count();
+    
+                // Store the counts along with the month name
+                $monthlyCounts[] = [
+                    'month' => $months[$month],
+                    'clientCount' => $clientCount,
+                    'staffCount' => $staffCount
+                ];
+            }
+    
+            // Return the counts in a JSON response
+            return response()->json(['monthlyUserCounts' => $monthlyCounts], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch monthly counts: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch monthly counts', 'error' => $e->getMessage()], 500);
+        }
+    }
+    
+
 }

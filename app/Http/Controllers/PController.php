@@ -528,4 +528,44 @@ class PController extends Controller
 
 
 
+
+    public function getClientProjects()
+    {
+        try {
+            // Fetch the authenticated user
+            $user = Auth::user();
+
+            // Retrieve the client ID associated with the authenticated user
+            $clientProfile = ClientProfile::where('user_id', $user->id)->first();
+            if (!$clientProfile) {
+                return response()->json(['message' => 'Client profile not found'], 404);
+            }
+            $client_id = $clientProfile->id;
+
+            // Fetch projects related to the retrieved client ID
+            $projects = Project::where('client_id', $client_id)->get();
+
+            // Return the projects in a JSON response
+            return response()->json(['projects' => $projects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch client projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch client projects', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getAllProjects()
+    {
+        try {
+            // Fetch all projects
+            $projects = Project::all();
+
+            // Return the projects in a JSON response
+            return response()->json(['projects' => $projects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch all projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch all projects', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+
 }

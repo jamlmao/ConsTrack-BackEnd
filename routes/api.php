@@ -50,5 +50,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/send-otp', [AController::class, 'sendOtp']);
     Route::post('/update-password', [AController::class, 'updatePassword']);
     Route::post('/generateSowa', [PController::class, 'downloadProjectsPdf']);
-   
+    Route::get('/client/projects', [PController::class, 'getClientProjects']);
+    Route::get('/counts', [AController::class, 'getUserCounts']);
+    Route::get('/projects', [PController::class, 'getAllProjects']);
+    Route::get('/monthly-counts', [AController::class, 'getMonthlyCounts']);
 });

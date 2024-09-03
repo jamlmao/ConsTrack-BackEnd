@@ -22,8 +22,8 @@ class ClientProfile extends Model
         'city',
         'country',
         'zipcode',
-        'company_name',
         'phone_number',
+        'company_id',
     ];
 
     // Define the relationship with the User model
