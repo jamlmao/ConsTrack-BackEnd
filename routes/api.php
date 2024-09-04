@@ -43,15 +43,16 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsPM', [PController::class, 'getProjectsPerMonth']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
-    
+    Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']);
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
+    
     Route::get('/CompanyProjects/{staffId}', [PController::class, 'getProjectsCounts']);
     Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']);
     Route::post('/send-otp', [AController::class, 'sendOtp']);
     Route::post('/update-password', [AController::class, 'updatePassword']);
     Route::post('/generateSowa', [PController::class, 'downloadProjectsPdf']);
-    Route::get('/client/projects', [PController::class, 'getClientProjects']);
+    Route::get('/getStaff', [AController::class, 'getAllStaff']);
     Route::get('/counts', [AController::class, 'getUserCounts']);
-    Route::get('/projects', [PController::class, 'getAllProjects']);
+    Route::get('/projects', [PController::class, 'getAllProjectsFilteredByCompanies']);
     Route::get('/monthly-counts', [AController::class, 'getMonthlyCounts']);
 });

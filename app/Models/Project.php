@@ -14,12 +14,14 @@ class Project extends Model
 
     // Specify the fillable fields
     protected $fillable = [
-        'site_location',
+        'site_address',
+        'site_city',
+        'project_name',
         'client_id',
         'status',
         'updated_at',
         'completion_date',
-        'staff_id',
+        'company_id',
         'starting_date',
         'totalBudget',
         'pj_image',
@@ -35,6 +37,11 @@ class Project extends Model
       public function staffProfile()
     {
         return $this->belongsTo(StaffProfile::class, 'staff_id');
+    }
+
+    public function Company()
+    {
+        return $this->belongsTo(Company::class, 'company_id');
     }
 
 }

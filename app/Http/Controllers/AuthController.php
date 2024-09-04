@@ -41,7 +41,8 @@ class AuthController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => 'client' // Default role set to client
+                'role' => 'client' ,// Default role set to client
+                'status' => 'Deactivated' // not active or still not use 
             ]);
 
             // Create token with expiration
@@ -106,6 +107,9 @@ class AuthController extends Controller
                         $profileId = $clientProfile->id;
                     }
                 }
+
+                $user->status = 'Active';
+                $user->save();
     
                 return response()->json([
                     'message' => 'Login successful',
@@ -133,6 +137,11 @@ class AuthController extends Controller
             // Revoke the token that was used to authenticate the current request
             $request->user()->currentAccessToken()->delete();
 
+            $user = $request->user();
+            $user->status = 'Not Active';
+            $user->save();
+
+            
             return response()->json([
                 'message' => 'Logout successful',
             ], 200);

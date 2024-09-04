@@ -16,27 +16,59 @@ use Dompdf\Options;
 use Exception;
 use Carbon\Carbon;
 use Intervention\Image\Facades\Image;
+use App\Models\Company;
 
 class PController extends Controller
 {
+   
     public function addproject(Request $request)
     {
+        $user = Auth::user();
+    
+        if (!in_array($user->role, ['admin', 'staff'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+    
         DB::beginTransaction(); // Start the transaction
         DB::enableQueryLog();
         try {
-            // Validate the data, excluding staff_id
+            // Validate the data, excluding company_id for staff
             $validatedData = $request->validate([
-                'site_location' => 'required|string',
+                'site_address'=>'required|string',
+                'site_city' => 'required|string',
+                'project_name'=>'required|string',
                 'client_id' => 'required|integer|exists:client_profiles,id',
                 'completion_date' => 'required|date',
                 'starting_date' => 'required|date',
                 'totalBudget' => 'required|integer',
-                'pj_image' => 'nullable|string',  // Base64 encoded image
-                'pj_pdf' => 'nullable|string', // Base64 encoded PDF
+                'pj_image' => 'required|string',  // Base64 encoded image
+                'pj_pdf' => 'required|string', // Base64 encoded PDF
+                'company_id' => 'required_if:user.role,admin|integer|exists:companies,id', // Validate company_id for admin
             ]);
-
-            $validatedData['status'] = 'IP'; // Set status to in_progress by default
-
+    
+            // Fetch company_id based on user role
+            if ($user->role === 'admin') {
+                $companyId = $validatedData['company_id'];
+            } else {
+                $companyId = $user->staffProfile->company_id;
+                if (!$companyId) {
+                    throw new \Exception('Company ID not found for the staff user');
+                }
+            }
+    
+            $validatedData['company_id'] = $companyId;
+    
+            // Check if the completion date is more than one day in the past
+            $completionDate = Carbon::parse($validatedData['completion_date']);
+            if (Carbon::now()->diffInDays($completionDate, false) < -1) {
+                $validatedData['status'] = 'D'; // Set status to "D" if completion date is more than one day in the past
+            } else {
+                $validatedData['status'] = 'OG'; // Set status to in_progress by default
+            }
+    
             // Decode the base64 encoded image
             if (!empty($validatedData['pj_image'])) {
                 $decodedImage = base64_decode($validatedData['pj_image'], true);
@@ -44,19 +76,19 @@ class PController extends Controller
                     Log::error('Invalid base64 image');
                     return response()->json(['message' => 'Invalid base64 image'], 400);
                 }
-
+    
                 $imageName = time() . '.png';
                 $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
-
+    
                 if (!$isSaved) {
                     Log::error('Failed to save image');
                     return response()->json(['message' => 'Failed to save image'], 500);
                 }
-
+    
                 $photoPath = asset('storage/photos/projects/' . $imageName); // Set the photo path
                 $validatedData['pj_image'] = $photoPath; // Set the photo path
             }
-
+    
             // Decode the base64 encoded PDF
             if (!empty($validatedData['pj_pdf'])) {
                 $decodedPdf = base64_decode($validatedData['pj_pdf'], true);
@@ -64,141 +96,123 @@ class PController extends Controller
                     Log::error('Invalid base64 PDF');
                     return response()->json(['message' => 'Invalid base64 PDF'], 400);
                 }
-
+    
                 $pdfName = time() . '.pdf';
                 $isSaved = Storage::disk('public')->put('pdfs/projects/' . $pdfName, $decodedPdf);
-
+    
                 if (!$isSaved) {
                     Log::error('Failed to save PDF');
                     return response()->json(['message' => 'Failed to save PDF'], 500);
                 }
-
+    
                 $pdfPath = asset('storage/pdfs/projects/' . $pdfName); // Set the PDF path
                 $validatedData['pj_pdf'] = $pdfPath; // Set the PDF path
             }
-
-            // Retrieve the role of the authenticated user from the 'role' column
-            $user = Auth::user();
-            $userRole = $user->role; // Adjust this if your column name is different
-
-            if ($userRole == 'admin') {
-                // For admin, use the user's id directly
-                $validatedData['staff_id'] = $user->id;
-            } else if ($userRole == 'staff') {
-                // For staff, use the staff profile id
-                $staffProfile = $user->staffProfile;
-                if (!$staffProfile) {
-                    Log::error('Staff profile not found for authenticated user');
-                    return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
-                }
-                $validatedData['staff_id'] = $staffProfile->id;
-            } else {
-                Log::error('Invalid role for creating a project');
-                return response()->json(['message' => 'Invalid role for creating a project'], 403);
-            }
-
-            // Create a new project
+    
+            // Create the project
             $project = Project::create($validatedData);
-
+    
+            // Create project log
             ProjectLogs::create([
-                'action' => 'create',
-                'staff_id' => $validatedData['staff_id'], // Use the determined staff_id
                 'project_id' => $project->id,
-                'old_values' => null, // No old values on creation
-                'new_values' => json_encode($validatedData), // Convert the new values to JSON
+                'user_id' => $user->id,
+                'staff_id' => $user->id,
+                'action' => 'create',
+                'description' => 'Project created by ' . $user->name,
+                'timestamp' => Carbon::now(),
             ]);
-
-            Log::info(DB::getQueryLog());
+    
             DB::commit(); // Commit the transaction
-            Log::info('Project created successfully', ['project' => $project]);
-            return response()->json($project, 201); // Return the newly created project
-        } catch (Exception $e) {
-            DB::rollBack(); // Rollback the transaction on error
-            Log::error('Failed to add project: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to create project', 'error' => $e->getMessage()], 500);
+    
+            return response()->json([
+                'message' => 'Project created successfully',
+                'project' => $project
+            ], 201);
+        } catch (\Throwable $th) {
+            DB::rollBack(); // Rollback the transaction
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
         }
     }
-    
 
 
 
 
     /// Fetch all projects for the staff
 
-    public function getProjectsForStaff()
-    {
-        try {
-            $user = Auth::user();
-            $staffProfile = $user->staffProfile;
-    
-            if (!$staffProfile) {
-                Log::error('Staff profile not found for authenticated user');
-                return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
-            }
-    
-            // Get the company name from the staff profile
-            $companyName = $staffProfile->company_name;
-    
-            // Fetch projects for all staff members under the same company
-            $projects = Project::whereHas('staffProfile', function ($query) use ($companyName) {
-                    $query->where('company_name', $companyName);
-                })
-                ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
-                ->get();
-    
-            $projectsWithClientDetails = $projects->map(function ($project) {
-                return [
-                    'id' => $project->id,
-                    'site_location' => $project->site_location,
-                    'client_id' => $project->client_id,
-                    'staff_id' => $project->staff_id,
-                    'status' => $project->status,
-                    'completion_date' => $project->completion_date,
-                    'pj_image' => $project->pj_image,
-                    'pj_pdf' => $project->pj_pdf,
-                    'starting_date' => $project->starting_date,
-                    'totalBudget' => $project->totalBudget,
-                    'created_at' => $project->created_at,
-                    'updated_at' => $project->updated_at,
-                    'client' => [
-                        'first_name' => $project->client->first_name,
-                        'last_name' => $project->client->last_name,
-                        'phone_number' => $project->client->phone_number,
-                    ],
-                ];
-            });
-    
-            return response()->json($projectsWithClientDetails, 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch projects: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch projects'], 500);
+  public function getProjectsForStaff()
+{
+    try {
+        $user = Auth::user();
+        $staffProfile = $user->staffProfile;
+
+        if (!$staffProfile) {
+            Log::error('Staff profile not found for authenticated user');
+            return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
         }
+
+        // Get the company ID from the staff profile
+        $companyId = $staffProfile->company_id;
+
+        // Fetch projects for the same company
+        $projects = Project::where('company_id', $companyId)
+            ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
+            ->get();
+
+        $projectsWithClientDetails = $projects->map(function ($project) {
+            return [
+                'id' => $project->id,
+                'site_address' => $project->site_address,
+                'site_city' => $project->site_city,
+                'project_name' => $project->project_name,
+                'client_id' => $project->client_id,
+                'company_id' => $project->company_id,
+                'status' => $project->status,
+                'completion_date' => $project->completion_date,
+                'pj_image' => $project->pj_image,
+                'pj_pdf' => $project->pj_pdf,
+                'starting_date' => $project->starting_date,
+                'totalBudget' => $project->totalBudget,
+                'created_at' => $project->created_at,
+                'updated_at' => $project->updated_at,
+                'client' => [
+                    'first_name' => $project->client->first_name,
+                    'last_name' => $project->client->last_name,
+                    'phone_number' => $project->client->phone_number,
+                ],
+            ];
+        });
+
+        return response()->json($projectsWithClientDetails, 200);
+    } catch (Exception $e) {
+        Log::error('Failed to fetch projects: ' . $e->getMessage(), ['exception' => $e]);
+        return response()->json(['message' => 'Failed to fetch projects'], 500);
     }
+}
 
     //fetch projects counts for the company
 
     public function getProjectsCounts($staffId) 
     {
         try {
-            // Fetch the staff's company name
+            // Fetch the staff's company ID
             $staff = StaffProfile::find($staffId);
             if (!$staff) {
                 return response()->json(['message' => 'Staff not found'], 404);
             }
-            $companyName = $staff->company_name;
-
-            // Get all staff IDs under the same company
-            $staffIds = StaffProfile::where('company_name', $companyName)->pluck('id');
-
-            // Count projects created by any staff under the same company
-            $projectCount = Project::whereIn('staff_id', $staffIds)->count();
-
+            $companyId = $staff->company_id;
+    
+            // Count projects under the same company
+            $projectCount = Project::where('company_id', $companyId)->count();
+    
             return response()->json(['project_count' => $projectCount], 200);
         } catch (Exception $e) {
             Log::error('Failed to count projects: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to count projects'], 500);
         }
-    }
+    }    
 
  
     //get project and client details
@@ -206,21 +220,23 @@ class PController extends Controller
     {
         // Get the logged-in user's ID
         $userId = Auth::id();
-    
-        // Fetch the company_name of the logged-in user
-        $companyName = DB::table('staff_profiles')
+
+        // Fetch the company_id of the logged-in user
+        $companyId = DB::table('staff_profiles')
             ->where('user_id', $userId)
-            ->value('company_name');
-    
-        // Fetch the project and client details for the specified project ID and company name
+            ->value('company_id');
+
+        // Fetch the project and client details for the specified project ID and company ID
         $project = DB::table('projects')
             ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
-            ->join('staff_profiles', 'projects.staff_id', '=', 'staff_profiles.id')
-            ->where('staff_profiles.company_name', $companyName) // Ensure the project belongs to the same company
+            ->join('staff_profiles', 'projects.company_id', '=', 'staff_profiles.company_id')
+            ->where('staff_profiles.company_id', $companyId) // Ensure the project belongs to the same company
             ->where('projects.id', $projectId)
             ->select(
                 'projects.id as project_id',
-                'projects.site_location',
+                'projects.site_address',
+                'projects.site_city',
+                'projects.project_name',
                 'projects.starting_date as project_starting_date',
                 'projects.completion_date as project_completion_date',
                 'client_profiles.first_name as first_name',
@@ -229,7 +245,7 @@ class PController extends Controller
                 'client_profiles.city as city'
             )
             ->first();
-    
+
         if ($project) {
             // Return the project and client details as JSON
             return response()->json($project);
@@ -238,8 +254,6 @@ class PController extends Controller
             return response()->json(['message' => 'Project not found'], 404);
         }
     }
-
-
 
 
     // Add a new task to a project
@@ -267,7 +281,7 @@ class PController extends Controller
             if ($completionDate->isPast()) {
                 $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
             } else {
-                $validatedData['pt_status'] = 'IP'; // Set status to 'IP' otherwise
+                $validatedData['pt_status'] = 'OG'; // Set status to 'IP' otherwise
             }
     
              // Decode the base64 encoded photo, if present
@@ -427,92 +441,110 @@ class PController extends Controller
     }
 
 
-    public function getProjectTasksGroupedByMonth($project_id)
-{
-    try {
-        // Fetch all tasks related to the given project ID and group them by month and year
-        $tasks = DB::table('project_tasks')
-            ->where('project_id', $project_id)
-            ->select(
-                DB::raw('YEAR(pt_starting_date) as year'),
-                DB::raw('MONTH(pt_starting_date) as month'),
-                DB::raw('COUNT(id) as task_count')
-            )
-            ->groupBy('year', 'month')
-            ->orderBy('year', 'asc')
-            ->orderBy('month', 'asc')
-            ->get();
-
-        // Map month numbers to month names
-        $monthNames = [
-            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
-            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
-            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
-        ];
-
-        $tasks = $tasks->map(function ($task) use ($monthNames) {
-            $task->month = $monthNames[$task->month];
-            return $task;
-        });
-
-        // Return the tasks in a JSON response
-        return response()->json(['tasks_per_month' => $tasks], 200);
-    } catch (Exception $e) {
-        Log::error('Failed to fetch project tasks grouped by month: ' . $e->getMessage());
-        return response()->json(['message' => 'Failed to fetch project tasks grouped by month', 'error' => $e->getMessage()], 500);
-    }
-}
-
-    public function getProjectsPerMonth() // fetch projects per month
+        public function getProjectTasksGroupedByMonth($project_id)
     {
         try {
-            // Get the logged-in staff profile
-            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
-    
-            if (!$staffProfile) {
-                Log::error('Staff profile not found for user_id: ' . Auth::id());
-                return response()->json(['error' => 'Staff profile not found'], 404);
-            }
-    
-            // Get the company name from the staff profile
-            $companyName = $staffProfile->company_name;
-            Log::info('Fetching projects for company: ' . $companyName);
-    
-            // Fetch projects under the same company and group them by month
-            $projects = DB::table('projects')
-                ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
-                ->where('client_profiles.company_name', $companyName)
-                ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+            // Fetch all tasks related to the given project ID and group them by month and year
+            $tasks = DB::table('project_tasks')
+                ->where('project_id', $project_id)
                 ->select(
-                    DB::raw('YEAR(projects.starting_date) as year'),
-                    DB::raw('MONTH(projects.starting_date) as month'),
-                    DB::raw('COUNT(projects.id) as project_count')
+                    DB::raw('YEAR(pt_starting_date) as year'),
+                    DB::raw('MONTH(pt_starting_date) as month'),
+                    DB::raw('COUNT(id) as task_count')
                 )
                 ->groupBy('year', 'month')
                 ->orderBy('year', 'asc')
                 ->orderBy('month', 'asc')
                 ->get();
-    
+
             // Map month numbers to month names
             $monthNames = [
                 1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
                 5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
                 9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
             ];
-    
+
+            $tasks = $tasks->map(function ($task) use ($monthNames) {
+                $task->month = $monthNames[$task->month];
+                return $task;
+            });
+
+            // Return the tasks in a JSON response
+            return response()->json(['tasks_per_month' => $tasks], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch project tasks grouped by month: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch project tasks grouped by month', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getProjectsPerMonth() // fetch projects per month
+    {
+        try {
+            // Get the logged-in user
+            $user = Auth::user();
+
+            // Check if the user is an admin
+            if ($user->role === 'admin') {
+                // Admins can access all projects
+                $projects = DB::table('projects')
+                    ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+                    ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+                    ->select(
+                        DB::raw('YEAR(projects.starting_date) as year'),
+                        DB::raw('MONTH(projects.starting_date) as month'),
+                        DB::raw('COUNT(projects.id) as project_count')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+            } else {
+                // Get the logged-in staff profile
+                $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+
+                if (!$staffProfile) {
+                    Log::error('Staff profile not found for user_id: ' . $user->id);
+                    return response()->json(['error' => 'Staff profile not found'], 404);
+                }
+
+                // Non-admin users can only access projects from their own company
+                $companyId = $staffProfile->company_id;
+                Log::info('Fetching projects for company ID: ' . $companyId);
+
+                $projects = DB::table('projects')
+                    ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+                    ->where('projects.company_id', $companyId)
+                    ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+                    ->select(
+                        DB::raw('YEAR(projects.starting_date) as year'),
+                        DB::raw('MONTH(projects.starting_date) as month'),
+                        DB::raw('COUNT(projects.id) as project_count')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+            }
+
+            // Map month numbers to month names
+            $monthNames = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+
             $projects = $projects->map(function ($project) use ($monthNames) {
                 $project->month = $monthNames[$project->month];
                 return $project;
             });
-    
-            Log::info('Projects fetched successfully for company: ' . $companyName);
+
+            Log::info('Projects fetched successfully');
             return response()->json(['projects_per_month' => $projects], 200);
         } catch (Exception $e) {
             Log::error('Failed to fetch projects per month: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch projects per month', 'message' => $e->getMessage()], 500);
         }
     }
-
 
 
 
@@ -529,43 +561,53 @@ class PController extends Controller
 
 
 
-    public function getClientProjects()
+
+    public function getAllProjectsFilteredByCompanies()
     {
         try {
-            // Fetch the authenticated user
+            // Get the logged-in user
             $user = Auth::user();
 
-            // Retrieve the client ID associated with the authenticated user
-            $clientProfile = ClientProfile::where('user_id', $user->id)->first();
-            if (!$clientProfile) {
-                return response()->json(['message' => 'Client profile not found'], 404);
+            // Check if the user is an admin
+            if ($user->role === 'admin') {
+                // Admins can access all projects
+                $projects = DB::table('projects')
+                    ->join('companies', 'projects.company_id', '=', 'companies.id')
+                    ->select(
+                        'companies.company_name as company_name',
+                        DB::raw('COUNT(projects.id) as project_count')
+                    )
+                    ->groupBy('companies.company_name')
+                    ->get();
+            } else {
+                // Get the logged-in staff profile
+                $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+
+                if (!$staffProfile) {
+                    Log::error('Staff profile not found for user_id: ' . $user->id);
+                    return response()->json(['error' => 'Staff profile not found'], 404);
+                }
+
+                // Non-admin users can only access projects from their own company
+                $companyId = $staffProfile->company_id;
+
+                $projects = DB::table('projects')
+                    ->join('companies', 'projects.company_id', '=', 'companies.id')
+                    ->where('projects.company_id', $companyId)
+                    ->select(
+                        'companies.company_name as company_name',
+                        DB::raw('COUNT(projects.id) as project_count')
+                    )
+                    ->groupBy('companies.company_name')
+                    ->get();
             }
-            $client_id = $clientProfile->id;
 
-            // Fetch projects related to the retrieved client ID
-            $projects = Project::where('client_id', $client_id)->get();
-
-            // Return the projects in a JSON response
-            return response()->json(['projects' => $projects], 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch client projects: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch client projects', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function getAllProjects()
-    {
-        try {
-            // Fetch all projects
-            $projects = Project::all();
-
-            // Return the projects in a JSON response
+            // Return the projects and their counts in a JSON response
             return response()->json(['projects' => $projects], 200);
         } catch (Exception $e) {
             Log::error('Failed to fetch all projects: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch all projects', 'error' => $e->getMessage()], 500);
         }
     }
-
 
 }
