@@ -142,55 +142,62 @@ class PController extends Controller
 
     /// Fetch all projects for the staff
 
-  public function getProjectsForStaff()
-{
-    try {
-        $user = Auth::user();
-        $staffProfile = $user->staffProfile;
-
-        if (!$staffProfile) {
-            Log::error('Staff profile not found for authenticated user');
-            return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
-        }
-
-        // Get the company ID from the staff profile
-        $companyId = $staffProfile->company_id;
-
-        // Fetch projects for the same company
-        $projects = Project::where('company_id', $companyId)
-            ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
-            ->get();
-
-        $projectsWithClientDetails = $projects->map(function ($project) {
-            return [
-                'id' => $project->id,
-                'site_address' => $project->site_address,
-                'site_city' => $project->site_city,
-                'project_name' => $project->project_name,
-                'client_id' => $project->client_id,
-                'company_id' => $project->company_id,
-                'status' => $project->status,
-                'completion_date' => $project->completion_date,
-                'pj_image' => $project->pj_image,
-                'pj_pdf' => $project->pj_pdf,
-                'starting_date' => $project->starting_date,
-                'totalBudget' => $project->totalBudget,
-                'created_at' => $project->created_at,
-                'updated_at' => $project->updated_at,
-                'client' => [
-                    'first_name' => $project->client->first_name,
-                    'last_name' => $project->client->last_name,
-                    'phone_number' => $project->client->phone_number,
-                ],
+    public function getProjectsForStaff()
+    {
+        try {
+            $user = Auth::user();
+            $staffProfile = $user->staffProfile;
+    
+            if (!$staffProfile) {
+                Log::error('Staff profile not found for authenticated user');
+                return response()->json(['message' => 'Staff profile not found for authenticated user'], 404);
+            }
+    
+            // Get the company ID from the staff profile
+            $companyId = $staffProfile->company_id;
+    
+            // Fetch projects for the same company
+            $projects = Project::where('company_id', $companyId)
+                ->with('client:id,first_name,last_name,phone_number') // Eager load the client relationship
+                ->get();
+    
+            // Map project statuses to descriptive terms
+            $statusMapping = [
+                'OG' => 'Ongoing',
+                'C' => 'Complete',
+                'D' => 'Due'
             ];
-        });
-
-        return response()->json($projectsWithClientDetails, 200);
-    } catch (Exception $e) {
-        Log::error('Failed to fetch projects: ' . $e->getMessage(), ['exception' => $e]);
-        return response()->json(['message' => 'Failed to fetch projects'], 500);
+    
+            $projectsWithClientDetails = $projects->map(function ($project) use ($statusMapping) {
+                return [
+                    'id' => $project->id,
+                    'site_address' => $project->site_address,
+                    'site_city' => $project->site_city,
+                    'project_name' => $project->project_name,
+                    'client_id' => $project->client_id,
+                    'company_id' => $project->company_id,
+                    'status' => $statusMapping[$project->status] ?? $project->status, // Map status
+                    'completion_date' => $project->completion_date,
+                    'pj_image' => $project->pj_image,
+                    'pj_pdf' => $project->pj_pdf,
+                    'starting_date' => $project->starting_date,
+                    'totalBudget' => $project->totalBudget,
+                    'created_at' => $project->created_at,
+                    'updated_at' => $project->updated_at,
+                    'client' => [
+                        'first_name' => $project->client->first_name,
+                        'last_name' => $project->client->last_name,
+                        'phone_number' => $project->client->phone_number,
+                    ],
+                ];
+            });
+    
+            return response()->json($projectsWithClientDetails, 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json(['message' => 'Failed to fetch projects'], 500);
+        }
     }
-}
 
     //fetch projects counts for the company
 
@@ -214,6 +221,54 @@ class PController extends Controller
         }
     }    
 
+
+
+    public function getAllProjectCounts()
+    {
+        try {
+            $user = Auth::user();
+
+            // Check if the user has the role of 'admin'
+            if ($user->role === 'admin') {
+                // Fetch all projects
+                $projects = Project::all();
+            } else {
+                $staffProfile = $user->staffProfile;
+
+                if (!$staffProfile) {
+                    Log::error('Staff profile not found for user ID: ' . $user->id);
+                    return response()->json(['message' => 'Staff profile not found for user ID: ' . $user->id], 404);
+                }
+
+                // Get the company ID from the staff profile
+                $companyId = $staffProfile->company_id;
+
+                // Fetch all projects for the company
+                $projects = Project::where('company_id', $companyId)->get();
+            }
+
+            // Initialize counters
+            $doneCount = 0;
+            $ongoingCount = 0;
+
+            // Iterate through projects and count statuses
+            foreach ($projects as $project) {
+                if ($project->status === 'C') {
+                    $doneCount++;
+                } elseif ($project->status === 'OG') {
+                    $ongoingCount++;
+                }
+            }
+
+            return response()->json([
+                'done_count' => $doneCount,
+                'ongoing_count' => $ongoingCount
+            ], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to count projects: ' . $e->getMessage(), ['exception' => $e]);
+            return response()->json(['message' => 'Failed to count projects'], 500);
+        }
+    }
  
     //get project and client details
     public function getProjectAndClientDetails($projectId)
@@ -236,6 +291,9 @@ class PController extends Controller
                 'projects.id as project_id',
                 'projects.site_address',
                 'projects.site_city',
+                'projects.pj_image',
+                'projects.pj_pdf',
+                'projects.status',
                 'projects.project_name',
                 'projects.starting_date as project_starting_date',
                 'projects.completion_date as project_completion_date',
@@ -246,8 +304,18 @@ class PController extends Controller
             )
             ->first();
 
+            $statusMapping = [
+                'OG' => 'Ongoing',
+                'C' => 'Complete',
+                'D' => 'Due'
+            ];
+
+
+
+
         if ($project) {
             // Return the project and client details as JSON
+            $project->status = $statusMapping[$project->status] ?? $project->status;
             return response()->json($project);
         } else {
             // Return a 404 response if the project is not found
@@ -610,4 +678,9 @@ class PController extends Controller
         }
     }
 
+
+
+
+
+    
 }

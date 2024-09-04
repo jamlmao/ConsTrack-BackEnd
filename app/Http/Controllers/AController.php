@@ -269,19 +269,18 @@ class AController extends Controller
         }
 
 
-
         public function getClientsUnderSameCompany()
         {
             // Get the logged-in staff profile
             $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
-        
+
             if (!$staffProfile) {
                 return response()->json(['error' => 'Staff profile not found'], 404);
             }
-        
+
             // Get the company ID from the staff profile
             $companyId = $staffProfile->company_id;
-        
+
             // Get clients under the same company and their project statuses
             $clients = DB::table('client_profiles')
                 ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
@@ -290,12 +289,25 @@ class AController extends Controller
                 ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
                 ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
                 ->select('client_profiles.*', 'projects.status as project_status', 'users.status as user_status')
-                ->distinct() // Ensure unique records
                 ->get();
-        
+
+            // Map project statuses to descriptive terms
+            $statusMapping = [
+                'OG' => 'Ongoing',
+                'C' => 'Complete',
+                'D' => 'Due'
+            ];
+
+            $clients = $clients->map(function ($client) use ($statusMapping) {
+                if (isset($client->project_status) && array_key_exists($client->project_status, $statusMapping)) {
+                    $client->project_status = $statusMapping[$client->project_status];
+                }
+                return $client;
+            });
+
             // Count the number of clients
             $clientCount = $clients->count();
-        
+
             return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
         }
 
