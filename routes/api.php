@@ -44,6 +44,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
     Route::get('/clients-count-by-month', [AController::class, 'getClientsCountByMonth']); 
     Route::get('/staff-count-by-month', [AController::class, 'getStaffCountByMonth']); //not rendered
+
+    
+    Route::get('/total', [PController::class, 'getTotalTaskCost']);
     Route::get('/projectsPM', [PController::class, 'getProjectsPerMonth']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);

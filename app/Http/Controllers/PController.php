@@ -325,86 +325,98 @@ class PController extends Controller
 
 
     // Add a new task to a project
-    public function addTask(Request $request, $project_id)
-    {
-        try {
-            // Validate the incoming request
-            $validatedData = $request->validate([
-                'pt_task_name' => 'required|string',
-                'pt_completion_date' => 'required|date',
-                'pt_starting_date' => 'required|date',
-                'pt_photo_task' => 'nullable|string', // Base64 encoded image
-                'pt_file_task' => 'nullable|string',
-                'pt_allocated_budget' => 'required|integer',
-                'pt_task_desc' => 'required|string', // Should be dropdown
-            ]);
-    
-            // Add the project_id to the validated data
-            $validatedData['project_id'] = $project_id;
-    
-            // Check if the completion date has passed
-            $completionDate = Carbon::parse($validatedData['pt_completion_date']);
-            $currentDate = Carbon::now();
-    
-            if ($completionDate->isPast()) {
-                $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
-            } else {
-                $validatedData['pt_status'] = 'OG'; // Set status to 'IP' otherwise
-            }
-    
-             // Decode the base64 encoded photo, if present
-            if (!empty($validatedData['pt_photo_task'])) {
-                $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
-                if ($decodedImage === false) {
-                    Log::error('Invalid base64 image');
-                    return response()->json(['message' => 'Invalid base64 image'], 400);
-                }
-                // Save the decoded image to a file or storage
-                $imageName = time() . '.webp';
-                $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
-
-                if (!$isSaved) {
-                    Log::error('Failed to save image');
-                    return response()->json(['message' => 'Failed to save image'], 500);
-                }
-
-                $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
-                $validatedData['pt_photo_task'] = $photoPath; // Set the photo path
-            }
-    
-            // Decode the base64 encoded PDF, if present
-            if (!empty($validatedData['pt_file_task'])) {
-                $decodedPdf = base64_decode($validatedData['pt_file_task'], true);
-                if ($decodedPdf === false) {
-                    Log::error('Invalid base64 PDF');
-                    return response()->json(['message' => 'Invalid base64 PDF'], 400);
-                }
-
-                $pdfName = time() . '.pdf';
-                $isSaved = Storage::disk('public')->put('pdfs/tasks/' . $pdfName, $decodedPdf);
-
-                if (!$isSaved) {
-                    Log::error('Failed to save PDF');
-                    return response()->json(['message' => 'Failed to save PDF'], 500);
-                }
-
-                $pdfPath = asset('storage/pdfs/tasks/' . $pdfName); // Set the PDF path
-                $validatedData['pt_file_task'] = $pdfPath; // Set the PDF path
-            }
-
-    
-            // Create a new task with the validated data
-            $task = Task::create($validatedData);
-            $task->photo_path = $validatedData['pt_photo_task'] ?? null;
-            $task->pdf_path = $validatedData['pt_file_task'] ?? null;
-            $task->pt_task_desc = $validatedData['pt_task_desc'];
+        public function addTask(Request $request, $project_id)
+        {
+            try {
+                // Validate the incoming request
+                $validatedData = $request->validate([
+                    'pt_task_name' => 'required|string',
+                    'pt_completion_date' => 'required|date',
+                    'pt_starting_date' => 'required|date',
+                    'pt_photo_task' => 'nullable|string', // Base64 encoded image
+                    'pt_file_task' => 'nullable|string',
+                    'pt_allocated_budget' => 'required|integer',
+                    'pt_task_desc' => 'required|string', // Should be dropdown
+                ]);
         
-            return response()->json(['message' => 'Task created successfully', 'task' => $task], 201);
-        } catch (Exception $e) {
-            Log::error('Failed to add task: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
+                // Add the project_id to the validated data
+                $validatedData['project_id'] = $project_id;
+        
+                // Fetch the project's total budget
+                $project = Project::findOrFail($project_id);
+                $totalBudget = $project->totalBudget;
+        
+                // Calculate the total allocated budget of all existing tasks
+                $totalAllocatedBudget = Task::where('project_id', $project_id)->sum('pt_allocated_budget');
+        
+                // Check if adding the new task's budget exceeds the total budget
+                if ($totalAllocatedBudget + $validatedData['pt_allocated_budget'] > $totalBudget) {
+                    return response()->json(['message' => 'Cannot add task: allocated budget exceeds the total project budget'], 400);
+                }
+        
+                // Check if the completion date has passed
+                $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+                $currentDate = Carbon::now();
+        
+                if ($completionDate->isPast()) {
+                    $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+                } else {
+                    $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                }
+        
+                // Decode the base64 encoded photo, if present
+                if (!empty($validatedData['pt_photo_task'])) {
+                    $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
+                    if ($decodedImage === false) {
+                        Log::error('Invalid base64 image');
+                        return response()->json(['message' => 'Invalid base64 image'], 400);
+                    }
+                    // Save the decoded image to a file or storage
+                    $imageName = time() . '.webp';
+                    $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
+        
+                    if (!$isSaved) {
+                        Log::error('Failed to save image');
+                        return response()->json(['message' => 'Failed to save image'], 500);
+                    }
+        
+                    $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+                    $validatedData['pt_photo_task'] = $photoPath; // Set the photo path
+                }
+        
+                // Decode the base64 encoded PDF, if present
+                if (!empty($validatedData['pt_file_task'])) {
+                    $decodedPdf = base64_decode($validatedData['pt_file_task'], true);
+                    if ($decodedPdf === false) {
+                        Log::error('Invalid base64 PDF');
+                        return response()->json(['message' => 'Invalid base64 PDF'], 400);
+                    }
+        
+                    $pdfName = time() . '.pdf';
+                    $isSaved = Storage::disk('public')->put('pdfs/tasks/' . $pdfName, $decodedPdf);
+        
+                    if (!$isSaved) {
+                        Log::error('Failed to save PDF');
+                        return response()->json(['message' => 'Failed to save PDF'], 500);
+                    }
+        
+                    $pdfPath = asset('storage/pdfs/tasks/' . $pdfName); // Set the PDF path
+                    $validatedData['pt_file_task'] = $pdfPath; // Set the PDF path
+                }
+        
+                // Create a new task with the validated data
+                $task = Task::create($validatedData);
+                $task->photo_path = $validatedData['pt_photo_task'] ?? null;
+                $task->pdf_path = $validatedData['pt_file_task'] ?? null;
+                $task->pt_task_desc = $validatedData['pt_task_desc'];
+        
+                return response()->json(['message' => 'Task created successfully', 'task' => $task], 201);
+            } catch (Exception $e) {
+                Log::error('Failed to add task: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
+            }
         }
-    }
+
 
     public function getProjectTaskImages($project_id)
         {
@@ -454,59 +466,76 @@ class PController extends Controller
     }
 
     //fetchproject tasks
-    public function getProjectTasks($project_id)
-    {
-        try {
-            // Fetch all tasks related to the given project ID
-            $tasks = Task::where('project_id', $project_id)->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'pt_task_desc', 'update_img', 'update_file', 'created_at', 'updated_at', 'pt_file_task']);
-
-            // Return the tasks in a JSON response
-            return response()->json(['tasks' => $tasks], 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch project tasks: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch project tasks', 'error' => $e->getMessage()], 500);
+        public function getProjectTasks($project_id)
+        {
+            try {
+                // Fetch all tasks related to the given project ID
+                $tasks = Task::where('project_id', $project_id)->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'pt_task_desc', 'update_img', 'update_file', 'created_at', 'updated_at', 'pt_file_task']);
+        
+                // Calculate the total number of tasks
+                $totalTasks = $tasks->count();
+        
+                // Calculate the total allocated budget
+                $totalAllocatedBudget = $tasks->sum('pt_allocated_budget');
+        
+                // Return the tasks, total number of tasks, and total allocated budget in a JSON response
+                return response()->json(['tasks' => $tasks, 'totalTasks' => $totalTasks, 'totalAllocatedBudget' => $totalAllocatedBudget], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch project tasks: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch project tasks', 'error' => $e->getMessage()], 500);
+            }
         }
-    }
 
 
-    public function getSortedProjectTasks($project_id)
-    {
-        try {
-            // Define the custom order for pt_task_desc
-            $customOrder = [
-                'GENERAL REQUIREMENTS',
-                'SITE WORKS',
-                'CONCRETE & MASONRY WORKS',
-                'METAL REINFORCEMENT WORKS',
-                'FORMS & SCAFFOLDINGS',
-                'STEEL FRAMING WORK',
-                'TINSMITHRY WORKS',
-                'PLASTERING WORKS',
-                'PAINTS WORKS',
-                'PLUMBING WORKS',
-                'ELECTRICAL WORKS',
-                'CEILING WORKS',
-                'ARCHITECTURAL'
-            ];
+       public function getSortedProjectTasks($project_id)
+        {
+            try {
+                // Define the custom order for pt_task_desc
+                $customOrder = [
+                    'GENERAL REQUIREMENTS',
+                    'SITE WORKS',
+                    'CONCRETE & MASONRY WORKS',
+                    'METAL REINFORCEMENT WORKS',
+                    'FORMS & SCAFFOLDINGS',
+                    'STEEL FRAMING WORK',
+                    'TINSMITHRY WORKS',
+                    'PLASTERING WORKS',
+                    'PAINTS WORKS',
+                    'PLUMBING WORKS',
+                    'ELECTRICAL WORKS',
+                    'CEILING WORKS',
+                    'ARCHITECTURAL'
+                ];
 
-            // Fetch all tasks related to the given project ID
-            $tasks = Task::where('project_id', $project_id)->get();
+                // Fetch all tasks related to the given project ID
+                $tasks = Task::where('project_id', $project_id)->get();
 
-            // Sort the tasks based on the custom order
-            $sortedTasks = $tasks->sort(function ($a, $b) use ($customOrder) {
-                $posA = array_search($a->pt_task_desc, $customOrder);
-                $posB = array_search($b->pt_task_desc, $customOrder);
+                // Sort the tasks based on the custom order
+                $sortedTasks = $tasks->sort(function ($a, $b) use ($customOrder) {
+                    $posA = array_search($a->pt_task_desc, $customOrder);
+                    $posB = array_search($b->pt_task_desc, $customOrder);
 
-                return $posA - $posB;
-            });
+                    return $posA - $posB;
+                });
 
-            // Return the sorted tasks in a JSON response
-            return response()->json(['tasks' => $sortedTasks->values()->all()], 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+                // Calculate the total allocated budget per category for tasks with status 'C'
+                $totalAllocatedBudgetPerCategory = [];
+                foreach ($customOrder as $category) {
+                    $totalAllocatedBudgetPerCategory[$category] = $tasks->where('pt_task_desc', $category)
+                                                                    ->where('pt_status', 'C')
+                                                                    ->sum('pt_allocated_budget');
+                }
+
+                // Return the sorted tasks and total allocated budget per category in a JSON response
+                return response()->json([
+                    'tasks' => $sortedTasks->values()->all(),
+                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
+                ], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+            }
         }
-    }
 
 
         public function getProjectTasksGroupedByMonth($project_id)
@@ -679,7 +708,7 @@ class PController extends Controller
     }
 
 
-
+   
 
 
     
