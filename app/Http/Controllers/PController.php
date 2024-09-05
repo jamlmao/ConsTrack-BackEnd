@@ -112,11 +112,17 @@ class PController extends Controller
             // Create the project
             $project = Project::create($validatedData);
     
+            // Ensure the staff_id exists in the staff_profiles table
+            $staffProfile = $user->staffProfile;
+            if (!$staffProfile) {
+                throw new \Exception('Staff profile not found for the user');
+            }
+    
             // Create project log
             ProjectLogs::create([
                 'project_id' => $project->id,
                 'user_id' => $user->id,
-                'staff_id' => $user->id,
+                'staff_id' => $staffProfile->id,
                 'action' => 'create',
                 'description' => 'Project created by ' . $user->name,
                 'timestamp' => Carbon::now(),
@@ -477,9 +483,16 @@ class PController extends Controller
         
                 // Calculate the total allocated budget
                 $totalAllocatedBudget = $tasks->sum('pt_allocated_budget');
+
+             
         
                 // Return the tasks, total number of tasks, and total allocated budget in a JSON response
-                return response()->json(['tasks' => $tasks, 'totalTasks' => $totalTasks, 'totalAllocatedBudget' => $totalAllocatedBudget], 200);
+                return response()->json([
+                    'tasks' => $tasks,
+                    'totalTasks' => $totalTasks,
+                    'totalAllocatedBudget' => $totalAllocatedBudget
+                
+                ], 200);
             } catch (Exception $e) {
                 Log::error('Failed to fetch project tasks: ' . $e->getMessage());
                 return response()->json(['message' => 'Failed to fetch project tasks', 'error' => $e->getMessage()], 500);
@@ -487,7 +500,100 @@ class PController extends Controller
         }
 
 
-       public function getSortedProjectTasks($project_id)
+        public function getSortedProjectTasks($project_id)
+        {
+            try {
+                // Define the custom order for pt_task_desc
+                $customOrder = [
+                    'GENERAL REQUIREMENTS',
+                    'SITE WORKS',
+                    'CONCRETE & MASONRY WORKS',
+                    'METAL REINFORCEMENT WORKS',
+                    'FORMS & SCAFFOLDINGS',
+                    'STEEL FRAMING WORK',
+                    'TINSMITHRY WORKS',
+                    'PLASTERING WORKS',
+                    'PAINTS WORKS',
+                    'PLUMBING WORKS',
+                    'ELECTRICAL WORKS',
+                    'CEILING WORKS',
+                    'ARCHITECTURAL'
+                ];
+        
+                // Fetch all tasks related to the given project ID
+                $tasks = Task::where('project_id', $project_id)->get();
+        
+                // Sort the tasks based on the custom order
+                $sortedTasks = $tasks->sort(function ($a, $b) use ($customOrder) {
+                    $posA = array_search($a->pt_task_desc, $customOrder);
+                    $posB = array_search($b->pt_task_desc, $customOrder);
+        
+                    return $posA - $posB;
+                });
+        
+                // Calculate the total allocated budget per category for tasks with status 'C'
+                $totalAllocatedBudgetPerCategory = [];
+                $totalBudget = $tasks->where('pt_status', 'C')->sum('pt_allocated_budget');
+        
+                foreach ($customOrder as $category) {
+                    $categoryTasks = $tasks->where('pt_task_desc', $category);
+                    $categoryBudget = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
+                    $totalAllocatedBudgetPerCategory[$category] = [
+                        'tasks' => $categoryTasks->values()->all(),
+                        'totalAllocatedBudget' => $categoryBudget,
+                        'percentage' => $totalBudget > 0 ? ($categoryBudget / $totalBudget) * 100 : 0
+                    ];
+                }
+        
+                // Return the sorted tasks and total allocated budget per category in a JSON response
+                return response()->json([
+                    'tasks' => $sortedTasks->values()->all(),
+                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
+                ], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+            }
+        }
+
+
+        public function getProjectTasksGroupedByMonth($project_id)
+        {
+            try {
+                // Fetch all tasks related to the given project ID and group them by month and year
+                $tasks = DB::table('project_tasks')
+                    ->where('project_id', $project_id)
+                    ->select(
+                        DB::raw('YEAR(pt_starting_date) as year'),
+                        DB::raw('MONTH(pt_starting_date) as month'),
+                        DB::raw('COUNT(id) as task_count')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+
+                // Map month numbers to month names
+                $monthNames = [
+                    1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                    5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                    9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+                ];
+
+                $tasks = $tasks->map(function ($task) use ($monthNames) {
+                    $task->month = $monthNames[$task->month];
+                    return $task;
+                });
+
+                // Return the tasks in a JSON response
+                return response()->json(['tasks_per_month' => $tasks], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch project tasks grouped by month: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch project tasks grouped by month', 'error' => $e->getMessage()], 500);
+            }
+        }
+
+        public function getTasksByCategory($project_id)
         {
             try {
                 // Define the custom order for pt_task_desc
@@ -507,72 +613,50 @@ class PController extends Controller
                     'ARCHITECTURAL'
                 ];
 
+                // Fetch the project to get the total budget
+                $project = Project::findOrFail($project_id);
+                $projectTotalBudget = $project->totalBudget;
+
                 // Fetch all tasks related to the given project ID
-                $tasks = Task::where('project_id', $project_id)->get();
+                $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'pt_allocated_budget', 'pt_task_desc', 'pt_completion_date']);
 
-                // Sort the tasks based on the custom order
-                $sortedTasks = $tasks->sort(function ($a, $b) use ($customOrder) {
-                    $posA = array_search($a->pt_task_desc, $customOrder);
-                    $posB = array_search($b->pt_task_desc, $customOrder);
-
-                    return $posA - $posB;
-                });
-
-                // Calculate the total allocated budget per category for tasks with status 'C'
+                // Initialize the result array
                 $totalAllocatedBudgetPerCategory = [];
+
                 foreach ($customOrder as $category) {
-                    $totalAllocatedBudgetPerCategory[$category] = $tasks->where('pt_task_desc', $category)
-                                                                    ->where('pt_status', 'C')
-                                                                    ->sum('pt_allocated_budget');
+                    $categoryTasks = $tasks->where('pt_task_desc', $category);
+                    $categoryBudget = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
+
+                    // Calculate previous cost, this period cost, and to date cost
+                    $previousCost = $categoryTasks->where('pt_completion_date', '<', Carbon::today())->sum('pt_allocated_budget');
+                    $thisPeriodCost = $categoryTasks->where('pt_completion_date', '=', Carbon::today())->sum('pt_allocated_budget');
+                    $toDateCost = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
+
+                    $totalAllocatedBudgetPerCategory[$category] = [
+                        'tasks' => $categoryTasks->map(function ($task) {
+                            return [
+                                'pt_status' => $task->pt_status,
+                                'pt_allocated_budget' => $task->pt_allocated_budget
+                            ];
+                        })->values()->all(),
+                        'totalAllocatedBudget' => $categoryBudget,
+                        'percentage' => $projectTotalBudget > 0 ? ($categoryBudget / $projectTotalBudget) * 100 : 0,
+                        'previousCost' => $previousCost,
+                        'thisPeriodCost' => $thisPeriodCost,
+                        'toDateCost' => $toDateCost
+                    ];
                 }
 
-                // Return the sorted tasks and total allocated budget per category in a JSON response
+                // Return the tasks grouped by category and total allocated budget per category in a JSON response
                 return response()->json([
-                    'tasks' => $sortedTasks->values()->all(),
                     'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
                 ], 200);
             } catch (Exception $e) {
-                Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
-                return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+                Log::error('Failed to fetch tasks by category: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch tasks by category', 'error' => $e->getMessage()], 500);
             }
         }
-
-
-        public function getProjectTasksGroupedByMonth($project_id)
-    {
-        try {
-            // Fetch all tasks related to the given project ID and group them by month and year
-            $tasks = DB::table('project_tasks')
-                ->where('project_id', $project_id)
-                ->select(
-                    DB::raw('YEAR(pt_starting_date) as year'),
-                    DB::raw('MONTH(pt_starting_date) as month'),
-                    DB::raw('COUNT(id) as task_count')
-                )
-                ->groupBy('year', 'month')
-                ->orderBy('year', 'asc')
-                ->orderBy('month', 'asc')
-                ->get();
-
-            // Map month numbers to month names
-            $monthNames = [
-                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
-                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
-                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
-            ];
-
-            $tasks = $tasks->map(function ($task) use ($monthNames) {
-                $task->month = $monthNames[$task->month];
-                return $task;
-            });
-
-            // Return the tasks in a JSON response
-            return response()->json(['tasks_per_month' => $tasks], 200);
-        } catch (Exception $e) {
-            Log::error('Failed to fetch project tasks grouped by month: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to fetch project tasks grouped by month', 'error' => $e->getMessage()], 500);
-        }
-    }
+                
 
     public function getProjectsPerMonth() // fetch projects per month
     {

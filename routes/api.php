@@ -38,6 +38,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/sortedTask/{project_id}', [PController::class, 'getSortedProjectTasks']);
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
+    Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     
 
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
