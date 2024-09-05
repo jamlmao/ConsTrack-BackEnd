@@ -23,6 +23,8 @@ class StaffProfile extends Model
         'zipcode',
         'phone_number',
         'company_id',
+        'extension_name',
+        'license_number',
     ];
 
     // Define the relationship with the User model

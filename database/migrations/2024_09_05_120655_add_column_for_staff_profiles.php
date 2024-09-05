@@ -12,10 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('staff_profiles', function (Blueprint $table) {
-            
-            $table->unsignedBigInteger('company_id');
-          
-            $table->foreign('company_id')->references('id')->on('companies')->onDelete('cascade');
+            //
+            $table->string('extension_name');
+            $table->string('license_number');
         });
     }
 

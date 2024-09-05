@@ -58,6 +58,8 @@ class AController extends Controller
             'city' => 'required|string|max:60',
             'country' => 'required|string|max:60',
             'zipcode' => 'required|string|max:10',
+            'extension_name' => 'null|string|max:20',
+            'license_number' => 'null|string|max:20',
             'phone_number' => 'required|string|max:15',
             'company_name' => 'required|string|max:60', // Add company_name to validation
            

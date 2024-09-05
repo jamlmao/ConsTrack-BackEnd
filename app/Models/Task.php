@@ -29,4 +29,9 @@ class Task extends Model
     {
         return $this->belongsTo(Project::class);
     }
+
+    public function resources()
+    {
+        return $this->hasMany(Resources::class, 'task_id');
+    }
 }
