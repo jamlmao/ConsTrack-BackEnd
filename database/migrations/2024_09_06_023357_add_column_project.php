@@ -13,13 +13,8 @@ return new class extends Migration
     {
         Schema::table('projects', function (Blueprint $table) {
             //
-            $table->string('site_address');
-            $table->string('site_city');
-            $table->string('site_province');
-            $table->string('project_name');
-            $table->unsignedBigInteger('company_id');
-
-            $table->foreign('company_id')->references('id')->on('companies')->onDelete('cascade');
+            $table->unsignedBigInteger('staff_id');
+            $table->foreign('staff_id')->references('id')->on('staff_profiles')->onDelete('cascade');
         });
     }
 
@@ -30,7 +25,6 @@ return new class extends Migration
     {
         Schema::table('projects', function (Blueprint $table) {
             //
-            Schema::dropIfExists('projects');
         });
     }
 };

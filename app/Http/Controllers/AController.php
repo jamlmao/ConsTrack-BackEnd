@@ -16,124 +16,108 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\Project;
 use App\Models\Company;
+use Illuminate\Support\Facades\Validator;
 
 class AController extends Controller
 {
+    
     public function createStaff(Request $request)
     {
-
-        $user = Auth::user();
-        
-        if (!in_array($user->role, ['admin', 'staff'])) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthorized'
-            ], 403);
-        }
+        try {
+            $validate = Validator::make($request->all(), 
+            [
+                'name' => 'required|string|max:255',
+                'email' => 'required|string|email|max:255|unique:users',
+                'password' => [
+                    'required',
+                    'string',
+                    'min:8',
+                    'regex:/[A-Z]/', // must contain at least one uppercase letter
+                    'regex:/[a-z]/', // must contain at least one lowercase letter
+                    'regex:/[0-9]/', // must contain at least one digit
+                    'regex:/[@$!%*?&#]/' // must contain a special character
+                ],
+                'first_name' => 'required|string|max:255',
+                'last_name' => 'required|string|max:255',
+                'sex' => 'required|in:M,F',
+                'address' => 'required|string|max:255',
+                'city' => 'required|string|max:255',
+                'country' => 'required|string|max:255',
+                'zipcode' => 'required|string|max:10',
+                'extension_name' => 'nullable|string|max:255', 
+                'license_number' => 'nullable|unique:staff_profiles|string|max:255', 
+                'phone_number' => 'required|string|max:15',
+                'company_name' => 'required|string|max:255', 
+            ]);
     
-        if ($user->role !== 'admin') {
-            return response()->json([
-                'status' => false,
-                'message' => 'User does not have an associated profile'
-            ], 400);
-        }
-
-        // Validate the request data
-        $validatedData = $request->validate([
-            'name' => 'required|string|max:20',
-            'email' => 'required|string|email|max:20|unique:users',
-            'password' => [
-                'required',
-                'string',
-                'min:8',
-                'regex:/[A-Z]/', // must contain at least one uppercase letter
-                'regex:/[a-z]/', // must contain at least one lowercase letter
-                'regex:/[0-9]/', // must contain at least one digit
-                'regex:/[@$!%*?&#]/' // must contain a special character
-            ],
-            'first_name' => 'required|string|max:20',
-            'last_name' => 'required|string|max:20',
-            'sex' => 'required|in:M,F',
-            'address' => 'required|string|max:60',
-            'city' => 'required|string|max:60',
-            'country' => 'required|string|max:60',
-            'zipcode' => 'required|string|max:10',
-            'extension_name' => 'null|string|max:20',
-            'license_number' => 'null|string|max:20',
-            'phone_number' => 'required|string|max:15',
-            'company_name' => 'required|string|max:60', // Add company_name to validation
-           
-        ]);
-
-        $staff = null; // Initialize the $staff variable
-
-        DB::transaction(function () use ($request, $validatedData, &$staff) {
-            // Check if the company already exists
-            $company = Company::where('company_name', $request->input('company_name'))->first();
-
-            if ($company) {
-                // Use the existing company's ID
-                $companyId = $company->id;
-            } else {
-                // Create a new company and get its ID
-                $newCompany = Company::create([
-                    'company_name' => $request->input('company_name'),
-                    // Add other necessary fields for the company
-                ]);
-                $companyId = $newCompany->id;
+            if ($validate->fails()){
+                return response()->json([
+                    'status'=> false,
+                    'errors' => $validate->errors(),
+                    'message' => 'Validation Error'
+                ], 422);
             }
 
-            // Create the user first
+            $company = Company::firstOrCreate(['company_name' => $request->company_name]);
+    
             $user = User::create([
-                'name' => $validatedData['name'],
-                'email' => $validatedData['email'],
-                'password' => Hash::make($validatedData['password']),
-                'role' => 'staff',
-                'status' => 'Deactivated'
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role' => 'staff', // Default role set to staff
+                'status' => 'Deactivated' // not active or still not use 
             ]);
-
-            // Create the staff profile with the company ID and user ID
-            $staff = StaffProfile::create([
-                'user_id' => $user->id, // Include the user_id
-                'first_name' => $validatedData['first_name'],
-                'last_name' => $validatedData['last_name'],
-                'sex' => $validatedData['sex'],
-                'address' => $validatedData['address'],
-                'city' => $validatedData['city'],
-                'company_id' => $companyId, // Use the company ID
-                'country' => $validatedData['country'],
-                'zipcode' => $validatedData['zipcode'],
-                'phone_number' => $validatedData['phone_number'],
+    
+            // Create staff profile
+            $staffProfile = StaffProfile::create([
+                'user_id' => $user->id,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'sex' => $request->sex,
+                'address' => $request->address,
+                'city' => $request->city,
+                'country' => $request->country,
+                'zipcode' => $request->zipcode,
+                'extension_name' => $request->extension_name??'', 
+                'license_number' => $request->license_number??'',
+                'phone_number' => $request->phone_number,
+                'company_id' => $company->id, 
             ]);
-
-            // Capture the new values for the audit log
-            $newValues = [
-                'name' => $user->name,
-                'email' => $user->email,
-                'password' => $user->password,
-                'first_name' => $staff->first_name,
-                'last_name' => $staff->last_name,
-                'sex' => $staff->sex,
-                'address' => $staff->address,
-                'city' => $staff->city,
-                'country' => $staff->country,
-                'zipcode' => $staff->zipcode,
-                'company_name' => $request->input('company_name'), // Use the inputted company name
-                'phone_number' => $staff->phone_number,
-            ];
-
+    
             // Log the creation of the staff profile
             AuditLog::create([
                 'user_id' => $user->id,
                 'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
                 'action' => 'create',
                 'old_values' => null,
-                'new_values' => json_encode($newValues),
+                'new_values' => json_encode([
+                    'first_name' => $request->first_name,
+                    'last_name' => $request->last_name,
+                    'sex' => $request->sex,
+                    'address' => $request->address,
+                    'city' => $request->city,
+                    'country' => $request->country,
+                    'zipcode' => $request->zipcode,
+                    'company_name' => $request->company_name,
+                    'phone_number' => $request->phone_number,
+                    'extension_name' => $request->extension_name??'',
+                    'license_number' => $request->license_number??'',
+                    'company_name' => $company->company_name,
+                ]),
             ]);
-        });
-
-        // Return a response or redirect as needed
-        return response()->json(['message' => 'Staff created successfully', 'staff' => $staff], 201);
+    
+            return response()->json([
+                'status' => true,
+                'message' => 'Staff registered successfully',
+                'user' => $user,
+                'staff_profile' => $staffProfile
+            ], 201);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
+        }
     }
 
 
@@ -314,6 +298,49 @@ class AController extends Controller
         }
 
 
+        public function getStaffWithExtensionAndLicense()
+        {
+            $user = Auth::user();
+
+            if (!in_array($user->role, ['admin', 'staff'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            try {
+                // Get the company ID based on the user's role
+                if ($user->role === 'admin') {
+                    $companyId = $user->adminProfile->company_id;
+                } else {
+                    $companyId = $user->staffProfile->company_id;
+                }
+
+                if (!$companyId) {
+                    throw new \Exception('Company ID not found for the user');
+                }
+
+                // Fetch staff members with extension names and license numbers under the same company
+                $staffWithExtension = StaffProfile::where('company_id', $companyId)
+                    ->whereNotNull('extension_name')
+                    ->where('extension_name', '!=', '')
+                    ->whereNotNull('license_number')
+                    ->where('license_number', '!=', '')
+                    ->get(['id', 'first_name', 'last_name', 'extension_name', 'license_number']);
+
+                return response()->json([
+                    'status' => true,
+                    'staff_with_extension' => $staffWithExtension
+                ], 200);
+            } catch (\Throwable $th) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $th->getMessage()
+                ], 500);
+            }
+        }
+
         public function getAllClientsForAdmin()
         {
             // Get the logged-in user
@@ -462,6 +489,17 @@ class AController extends Controller
         }
 
 
+        private function getExtensionName($extensionName)
+        {
+            switch (strtolower($extensionName)) {
+                case 'civil engineer':
+                    return 'CE';
+                case 'architect':
+                    return 'UAP';
+                default:
+                    return $extensionName; // Return the original value if it doesn't match
+            }
+        }
 
         public function getLoggedInUserNameAndId()
         {
@@ -490,6 +528,8 @@ class AController extends Controller
                         'phone_number' => $staffProfile->phone_number,
                         'company_id' => $staffProfile->company_id,
                         'company_name' => $company ? $company->company_name : null, // Get company_name from company_id
+                        'extension_name' =>$this->getExtensionName($staffProfile->extension_name),
+                        'license_number' => $staffProfile->license_number,
                     ];
                 }
             } elseif ($user->role === 'client') {

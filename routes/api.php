@@ -34,7 +34,10 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+
+    Route::get('/staff-with-extension', [AController::class, 'getStaffWithExtensionAndLicense']);
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
+    Route::get('/projectD/{project_id}', [PController::class, 'getProjectDetails']);
     Route::get('/sortedTask/{project_id}', [PController::class, 'getSortedProjectTasks']);
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);

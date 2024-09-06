@@ -22,6 +22,7 @@ use App\Models\Resources;
 class PController extends Controller
 {
    
+  
     public function addproject(Request $request)
     {
         $user = Auth::user();
@@ -33,21 +34,23 @@ class PController extends Controller
             ], 403);
         }
     
-        DB::beginTransaction(); // Start the transaction
+        DB::beginTransaction(); 
         DB::enableQueryLog();
         try {
             // Validate the data, excluding company_id for staff
             $validatedData = $request->validate([
                 'site_address'=>'required|string',
                 'site_city' => 'required|string',
+                'site_province' => 'required|string',
                 'project_name'=>'required|string',
                 'client_id' => 'required|integer|exists:client_profiles,id',
                 'completion_date' => 'required|date',
                 'starting_date' => 'required|date',
                 'totalBudget' => 'required|integer',
-                'pj_image' => 'required|string',  // Base64 encoded image
-                'pj_pdf' => 'required|string', // Base64 encoded PDF
-                'company_id' => 'required_if:user.role,admin|integer|exists:companies,id', // Validate company_id for admin
+                'pj_image' => 'required|string',  
+                'pj_pdf' => 'required|string', 
+                'company_id' => 'required_if:user.role,admin|integer|exists:companies,id', 
+                'selected_staff_id' => 'nullable|integer|exists:staff_profiles,id', // Validate selected staff ID
             ]);
     
             // Fetch company_id based on user role
@@ -67,7 +70,7 @@ class PController extends Controller
             if (Carbon::now()->diffInDays($completionDate, false) < -1) {
                 $validatedData['status'] = 'D'; // Set status to "D" if completion date is more than one day in the past
             } else {
-                $validatedData['status'] = 'OG'; // Set status to in_progress by default
+                $validatedData['status'] = 'OG'; // Set status to on progress by default
             }
     
             // Decode the base64 encoded image
@@ -86,8 +89,8 @@ class PController extends Controller
                     return response()->json(['message' => 'Failed to save image'], 500);
                 }
     
-                $photoPath = asset('storage/photos/projects/' . $imageName); // Set the photo path
-                $validatedData['pj_image'] = $photoPath; // Set the photo path
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image'] = $photoPath; 
             }
     
             // Decode the base64 encoded PDF
@@ -106,12 +109,9 @@ class PController extends Controller
                     return response()->json(['message' => 'Failed to save PDF'], 500);
                 }
     
-                $pdfPath = asset('storage/pdfs/projects/' . $pdfName); // Set the PDF path
-                $validatedData['pj_pdf'] = $pdfPath; // Set the PDF path
+                $pdfPath = asset('storage/pdfs/projects/' . $pdfName); 
+                $validatedData['pj_pdf'] = $pdfPath; 
             }
-    
-            // Create the project
-            $project = Project::create($validatedData);
     
             // Ensure the staff_id exists in the staff_profiles table
             $staffProfile = $user->staffProfile;
@@ -119,11 +119,33 @@ class PController extends Controller
                 throw new \Exception('Staff profile not found for the user');
             }
     
+            // Check if the staff member has extension name and license number
+            if (empty($staffProfile->extension_name) || empty($staffProfile->license_number)) {
+                if (empty($validatedData['selected_staff_id'])) {
+                    // Fetch staff members with extension names
+                    $staffWithExtension = StaffProfile::whereNotNull('extension_name')->get(['id', 'first_name', 'last_name']);
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Please select a staff member with an extension name',
+                        'staff_with_extension' => $staffWithExtension
+                    ], 400);
+                } else {
+                    $staffId = $validatedData['selected_staff_id'];
+                }
+            } else {
+                $staffId = $staffProfile->id;
+            }
+            
+            $validatedData['staff_id'] = $staffId;
+
+            // Create the project
+            $project = Project::create($validatedData);
+    
             // Create project log
             ProjectLogs::create([
                 'project_id' => $project->id,
                 'user_id' => $user->id,
-                'staff_id' => $staffProfile->id,
+                'staff_id' => $staffId,
                 'action' => 'create',
                 'description' => 'Project created by ' . $user->name,
                 'timestamp' => Carbon::now(),
@@ -230,6 +252,7 @@ class PController extends Controller
 
 
 
+
     public function getAllProjectCounts()
     {
         try {
@@ -276,6 +299,7 @@ class PController extends Controller
             return response()->json(['message' => 'Failed to count projects'], 500);
         }
     }
+
  
     //get project and client details
     public function getProjectAndClientDetails($projectId)
@@ -759,7 +783,33 @@ class PController extends Controller
 
 
 
+    public function getProjectDetails($project_id)
+    {
+        try {
+            // Fetch project details
+          $project = DB::table('projects')
+            ->join('staff_profiles', 'projects.staff_id', '=', 'staff_profiles.id')
+            ->where('projects.id', $project_id)
+            ->select('projects.*', 'staff_profiles.first_name as staff_first_name', 'staff_profiles.last_name as staff_last_name', 'staff_profiles.extension_name', 'staff_profiles.license_number')
+            ->first();
 
+            if (!$project) {
+                return response()->json(['error' => 'Project not found'], 404);
+            }
+
+            // Fetch tasks grouped by month
+           
+
+            // Combine project details and tasks
+            $response = [
+                'project' => $project, 
+            ];
+
+            return response()->json($response, 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'An error occurred while fetching project details'], 500);
+        }
+    }
 
 
 
