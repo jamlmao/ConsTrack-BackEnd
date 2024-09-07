@@ -981,5 +981,46 @@ class PController extends Controller
     }
 
 
+    public function getClientProjects($clientId)
+    {
+        try {
+            // Fetch the client
+            $client = ClientProfile::find($clientId);
 
+            if (!$client) {
+                return response()->json(['message' => 'Client not found'], 404);
+            }
+
+
+            // Fetch the projects associated with the client
+            $projects = Project::where('client_id', $clientId)
+                ->with('staff:id,first_name,last_name,extension_name', 'company:id,company_name') 
+                ->get();
+
+               $projects =$projects -> map(function ($project){
+                    return [
+                        "id" => $project->id,
+                        "site_address" => $project->site_address,
+                        "site_city" => $project->site_city,
+                        "site_province"=> $project->site_province,
+                        "project_name" => $project->project_name,
+                        "status" => $project->status,
+                        "completion_date" => $project->completion_date,
+                        "pj_image" => $project->pj_image,
+                        "totalBudget" => $project->totalBudget,
+                        "starting_date" => $project->starting_date,
+                        "status" => $project->status,
+                        "first_name" => $project->staff->first_name,
+                        "last_name" => $project->staff->last_name,
+                        "company_name" => $project->company->company_name,
+                        "extension_name" => $project->staff->extension_name,
+                    ];
+               });
+
+            return response()->json(['projects' => $projects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch client projects: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch client projects', 'error' => $e->getMessage()], 500);
+        }
+    }
 }

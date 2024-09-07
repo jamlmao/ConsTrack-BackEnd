@@ -35,7 +35,7 @@ class ClientProfile extends Model
     // Define the relationship with the StaffProfile model for the same company name 
     public function staffProfiles()
     {
-        return $this->hasMany(StaffProfile::class, 'company_name', 'company_name');
+        return $this->hasMany(StaffProfile::class, 'company_name', 'company_name', 'staff');
     }
    
     public function company()

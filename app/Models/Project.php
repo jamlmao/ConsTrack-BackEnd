@@ -34,23 +34,18 @@ class Project extends Model
       // Define the relationship with the Client model
       public function client()
       {
-          return $this->belongsTo(ClientProfile::class);
+          return $this->belongsTo(ClientProfile::class, 'client_id');
       }
-
-      public function staffProfile()
-    {
-        return $this->belongsTo(StaffProfile::class, 'staff_id');
-    }
-
-    public function staff()
-    {
-        return $this->belongsTo(StaffProfile::class, 'staff_id');
-    }
-
-    public function Company()
-    {
-        return $this->belongsTo(Company::class, 'company_id');
-    }
+  
+      public function staff()
+      {
+          return $this->belongsTo(StaffProfile::class, 'staff_id');
+      }
+  
+      public function company()
+      {
+          return $this->belongsTo(Company::class, 'company_id');
+      }
 
 }
 

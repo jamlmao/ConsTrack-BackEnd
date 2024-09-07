@@ -450,12 +450,10 @@ class AController extends Controller
                 }
 
                 // Get the company ID from the admin user
-                $companyId = $user->company_id;
+             
 
                 // Fetch staff under the same company and group them by month
                 $staffs = DB::table('staff_profiles')
-                    ->where('company_id', $companyId)
-                    ->whereNotNull('company_id')  
                     ->select(
                         DB::raw('YEAR(created_at) as year'),
                         DB::raw('MONTH(created_at) as month'),
@@ -473,12 +471,13 @@ class AController extends Controller
                     9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
                 ];
 
-                $staffs = $staffs->map(function ($staff) use ($monthNames) {
-                    $staff->month = $monthNames[$staff->month];
-                    return $staff;
-                });
+                $staffCountByMonth = [];
+                foreach ($staffs as $staff) {
+                    $monthYear = $monthNames[$staff->month] . '_' . $staff->year;
+                    $staffCountByMonth[$monthYear] = $staff->staff_count;
+                }
 
-                return response()->json(['staffs_per_month' => $staffs], 200);
+                return response()->json(['StaffPerMonth' => $staffCountByMonth], 200);
             } catch (Exception $e) {
                 Log::error('Failed to fetch staff count by month: ' . $e->getMessage());
                 return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);

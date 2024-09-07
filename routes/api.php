@@ -79,7 +79,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     
-
+   
 
     Route::get('/CompanyProjects/{staffId}', [PController::class, 'getProjectsCounts']);
     Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']); 
@@ -90,4 +90,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/counts', [AController::class, 'getUserCounts']); //not rendered Admin
     Route::get('/projects', [PController::class, 'getAllProjectsFilteredByCompanies']); //not rendered admin
     Route::get('/monthly-counts', [AController::class, 'getMonthlyCounts']);//not rendered admin
+
+    Route::get('clients/{clientId}/projects', [PController::class, 'getClientProjects']);
+
+
+
 });
