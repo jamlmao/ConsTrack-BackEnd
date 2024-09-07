@@ -33,9 +33,19 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    // Fetch resources for each task
+                    $task->resources = DB::table('resources')
+                        ->where('task_id', $task->id) 
+                        ->get();
+                        if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                            $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                            $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                            $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                        }
                     unset($task->pt_task_desc); 
                     return $task;
                 });
+              
 
             return response()->json([
                 'category' => $category,
@@ -58,6 +68,14 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
                     unset($task->pt_task_desc); 
                     return $task;
                 });
@@ -83,6 +101,14 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
                     unset($task->pt_task_desc); 
                     return $task;
                 });
@@ -108,6 +134,14 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
                     unset($task->pt_task_desc); 
                     return $task;
                 });
@@ -134,6 +168,14 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
                     unset($task->pt_task_desc); 
                     return $task;
                 });
@@ -161,6 +203,14 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
                     unset($task->pt_task_desc);
                     return $task;
                 });
@@ -188,7 +238,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc); 
                     return $task;
                 });
 
@@ -215,7 +273,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc);
                     return $task;
                 });
 
@@ -242,7 +308,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc); 
                     return $task;
                 });
 
@@ -269,7 +343,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc); 
                     return $task;
                 });
 
@@ -296,7 +378,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc); 
                     return $task;
                 });
 
@@ -323,7 +413,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc);
                     return $task;
                 });
 
@@ -348,7 +446,15 @@ class TaskController extends Controller
                 ->where('pt_task_desc', $category)
                 ->get()
                 ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    $task->resources = DB::table('resources')
+                    ->where('task_id', $task->id) 
+                    ->get();
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+                    unset($task->pt_task_desc);
                     return $task;
                 });
 
@@ -362,7 +468,36 @@ class TaskController extends Controller
         }
     }
 
+    public function getAllTasksWithResources()
+    {
+        try {
+            // Fetch all tasks
+            $tasks = DB::table('project_tasks')
+                ->get()
+                ->map(function ($task) {
+                    // Fetch resources for each task
+                    $task->resources = DB::table('resources')
+                        ->where('task_id', $task->id)
+                        ->get();
 
+                   
+                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
+                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
+                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                    }
+
+                    return $task;
+                });
+
+            return response()->json([
+                'alltasks' => $tasks
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching tasks and resources: ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching tasks and resources'], 500);
+        }
+    }
 
 
 

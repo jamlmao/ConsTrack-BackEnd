@@ -240,15 +240,29 @@ class PController extends Controller
             }
             $companyId = $staff->company_id;
     
-            // Count projects under the same company
+            // Count all projects under the same company
             $projectCount = Project::where('company_id', $companyId)->count();
     
-            return response()->json(['project_count' => $projectCount], 200);
+            // Count done projects under the same company
+            $doneProjectCount = Project::where('company_id', $companyId)
+                ->where('status', 'C') // Assuming 'done' is the status for completed projects
+                ->count();
+    
+            // Count ongoing projects under the same company
+            $ongoingProjectCount = Project::where('company_id', $companyId)
+                ->where('status', 'OG') // Assuming 'ongoing' is the status for ongoing projects
+                ->count();
+    
+            return response()->json([
+                'project_count' => $projectCount,
+                'done' => $doneProjectCount,
+                'ongoing' => $ongoingProjectCount
+            ], 200);
         } catch (Exception $e) {
             Log::error('Failed to count projects: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to count projects'], 500);
         }
-    }    
+    }
 
 
 
@@ -789,8 +803,9 @@ class PController extends Controller
             // Fetch project details
           $project = DB::table('projects')
             ->join('staff_profiles', 'projects.staff_id', '=', 'staff_profiles.id')
+            ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
             ->where('projects.id', $project_id)
-            ->select('projects.*', 'staff_profiles.first_name as staff_first_name', 'staff_profiles.last_name as staff_last_name', 'staff_profiles.extension_name', 'staff_profiles.license_number')
+            ->select('projects.*', 'staff_profiles.first_name as staff_first_name', 'staff_profiles.last_name as staff_last_name', 'staff_profiles.extension_name', 'staff_profiles.license_number', 'client_profiles.first_name as client_first_name', 'client_profiles.last_name as client_last_name')
             ->first();
 
             if (!$project) {
@@ -862,81 +877,72 @@ class PController extends Controller
         }
     }
 
-    public function getGeneralRequirementsTasks()
-    {
-        try {
-            
-            $category = 'GENERAL REQUIREMENTS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->get()
-                ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getSiteWorksTasks()
-    {
-        try {
-            
-            $category = 'SITE WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->get()
-                ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getConcreteWorksTasks()
-    {
-        try {
-            
-            $category = 'CONCRETE & MASONRY WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->get()
-                ->map(function ($task) {
-                    unset($task->pt_task_desc); // Remove the pt_task_desc field
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
     
+
+
+
+    public function updateTask(Request $request, $taskId)
+    {
+        $request->validate([
+            'update_img' => 'required|string'
+        ]);
     
+        try {
+            // Find the task by ID
+            $task = Task::findOrFail($taskId);
+            Log::info('Task found: ' . $taskId);
+    
+            // Update task status to 'C'
+            $task->pt_status = 'C';
+    
+            // Find the project associated with the task
+            $project = Project::findOrFail($task->project_id);
+            Log::info('Project found: ' . $project->id);
+    
+         
+            // Update the used budget
+            if ($project->total_used_budget !== null) {
+                $project->total_used_budget += $task->pt_allocated_budget;
+            } else {
+                $project->total_used_budget = $task->pt_allocated_budget;
+            }
+            Log::info('Updated project used budget: ' . $project->total_used_budget);
+    
+      
+            if (!empty($request->update_img)) {
+                $decodedImage = base64_decode($request->update_img, true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.webp';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $task->update_img = $photoPath;
+                Log::info('Image saved successfully: ' . $photoPath);
+            }
+    
+            // Save the updated task and project
+            $task->save();
+            $project->save();
+            Log::info('Task and project saved successfully');
+    
+            return response()->json([
+                'message' => 'Task updated successfully',
+                'used_budget' => $project->total_used_budget,
+                'update_img' => $task->update_img
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while updating the task'], 500);
+        }
+        
+    }  
 }

@@ -35,6 +35,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+    Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
 
     Route::get('/staff-with-extension', [AController::class, 'getStaffWithExtensionAndLicense']);
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
@@ -44,6 +45,10 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     
+    
+    Route::get('/Alltask', [TaskController::class, 'getAllTasksWithResources']);
+
+
 
     Route::get('/tasks/general', [TaskController::class, 'getGeneralTasks']);
     Route::get('/tasks/site', [TaskController::class, 'getSiteWorksTasks']);
@@ -60,6 +65,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/tasks/archi', [TaskController::class, 'getArchiWorksTasks']);
 
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
+ 
 
     Route::get('/clients-count-by-month', [AController::class, 'getClientsCountByMonth']); 
     Route::get('/staff-count-by-month', [AController::class, 'getStaffCountByMonth']); //not rendered

@@ -298,6 +298,7 @@ class AController extends Controller
         }
 
 
+       
         public function getStaffWithExtensionAndLicense()
         {
             $user = Auth::user();
@@ -311,27 +312,23 @@ class AController extends Controller
 
             try {
                 // Get the company ID based on the user's role
-                if ($user->role === 'admin') {
-                    $companyId = $user->adminProfile->company_id;
-                } else {
-                    $companyId = $user->staffProfile->company_id;
-                }
+                $companyId = $user->staffProfile->company_id;
 
                 if (!$companyId) {
                     throw new \Exception('Company ID not found for the user');
                 }
 
-                // Fetch staff members with extension names and license numbers under the same company
+                // Fetch staff members with extension names, license numbers, and phone numbers under the same company
                 $staffWithExtension = StaffProfile::where('company_id', $companyId)
                     ->whereNotNull('extension_name')
                     ->where('extension_name', '!=', '')
                     ->whereNotNull('license_number')
                     ->where('license_number', '!=', '')
-                    ->get(['id', 'first_name', 'last_name', 'extension_name', 'license_number']);
+                    ->where('id', '!=', $user->staffProfile->id) // Exclude the logged-in user by ID
+                    ->get(['id', 'first_name', 'last_name', 'extension_name', 'license_number', 'phone_number']);
 
                 return response()->json([
-                    'status' => true,
-                    'staff_with_extension' => $staffWithExtension
+                    'staff' => $staffWithExtension
                 ], 200);
             } catch (\Throwable $th) {
                 return response()->json([
