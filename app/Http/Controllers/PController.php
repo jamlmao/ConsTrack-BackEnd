@@ -862,9 +862,81 @@ class PController extends Controller
         }
     }
 
+    public function getGeneralRequirementsTasks()
+    {
+        try {
+            
+            $category = 'GENERAL REQUIREMENTS';
 
-   
+           
+            $tasks = DB::table('project_tasks')
+                ->where('pt_task_desc', $category)
+                ->get()
+                ->map(function ($task) {
+                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    return $task;
+                });
 
+            return response()->json([
+                'category' => $category,
+                'tasks' => $tasks
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
+        }
+    }
 
+    public function getSiteWorksTasks()
+    {
+        try {
+            
+            $category = 'SITE WORKS';
+
+           
+            $tasks = DB::table('project_tasks')
+                ->where('pt_task_desc', $category)
+                ->get()
+                ->map(function ($task) {
+                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    return $task;
+                });
+
+            return response()->json([
+                'category' => $category,
+                'tasks' => $tasks
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
+        }
+    }
+
+    public function getConcreteWorksTasks()
+    {
+        try {
+            
+            $category = 'CONCRETE & MASONRY WORKS';
+
+           
+            $tasks = DB::table('project_tasks')
+                ->where('pt_task_desc', $category)
+                ->get()
+                ->map(function ($task) {
+                    unset($task->pt_task_desc); // Remove the pt_task_desc field
+                    return $task;
+                });
+
+            return response()->json([
+                'category' => $category,
+                'tasks' => $tasks
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
+        }
+    }
+
+    
     
 }

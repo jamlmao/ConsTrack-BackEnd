@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
+use App\Http\Controllers\TaskController;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -43,6 +44,20 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     
+
+    Route::get('/tasks/general', [TaskController::class, 'getGeneralTasks']);
+    Route::get('/tasks/site', [TaskController::class, 'getSiteWorksTasks']);
+    Route::get('/tasks/concrete', [TaskController::class, 'getConcreteWorksTasks']);
+    Route::get('/tasks/metal', [TaskController::class, 'getMetalWorksTasks']);
+    Route::get('/tasks/forms', [TaskController::class, 'getFormsAndScaffoldingWorksTasks']);
+    Route::get('/tasks/steel', [TaskController::class, 'getSteelWorksTasks']);
+    Route::get('/tasks/tins', [TaskController::class, 'getTinsWorksTasks']);
+    Route::get('/tasks/plaster', [TaskController::class, 'getPlasterWorksTasks']);
+    Route::get('/tasks/paint', [TaskController::class, 'getPaintsWorksTasks']);
+    Route::get('/tasks/plumbing', [TaskController::class, 'getPlumbingWorksTasks']);
+    Route::get('/tasks/electrical', [TaskController::class, 'getElectricalWorksTasks']);
+    Route::get('/tasks/ceiling', [TaskController::class, 'getCeilingWorksTasks']);
+    Route::get('/tasks/archi', [TaskController::class, 'getArchiWorksTasks']);
 
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
 
