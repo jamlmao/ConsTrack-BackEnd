@@ -27,7 +27,8 @@ class Project extends Model
         'starting_date',
         'totalBudget',
         'pj_image',
-        'pj_pdf'
+        'pj_pdf',
+        'total_used_budget',
     ];
 
       // Define the relationship with the Client model
@@ -37,6 +38,11 @@ class Project extends Model
       }
 
       public function staffProfile()
+    {
+        return $this->belongsTo(StaffProfile::class, 'staff_id');
+    }
+
+    public function staff()
     {
         return $this->belongsTo(StaffProfile::class, 'staff_id');
     }

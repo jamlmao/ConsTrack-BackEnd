@@ -38,4 +38,8 @@ class ClientProfile extends Model
         return $this->hasMany(StaffProfile::class, 'company_name', 'company_name');
     }
    
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
 }

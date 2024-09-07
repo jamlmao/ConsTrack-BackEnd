@@ -37,7 +37,8 @@ class User extends Authenticatable
         return $this->hasOne(ClientProfile::class,'user_id', 'id');
     }
     
-
+    
+  
 
     /**
      * The attributes that should be hidden for serialization.

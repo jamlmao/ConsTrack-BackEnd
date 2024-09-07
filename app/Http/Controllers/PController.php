@@ -137,7 +137,8 @@ class PController extends Controller
             }
             
             $validatedData['staff_id'] = $staffId;
-
+            
+            $validatedData['total_used_budget'] = 0;
             // Create the project
             $project = Project::create($validatedData);
     
@@ -291,10 +292,11 @@ class PController extends Controller
                 $projects = Project::where('company_id', $companyId)->get();
             }
 
-            // Initialize counters
+        
             $doneCount = 0;
             $ongoingCount = 0;
-
+            $projectCount = $projects->count();
+            
             // Iterate through projects and count statuses
             foreach ($projects as $project) {
                 if ($project->status === 'C') {
@@ -306,7 +308,8 @@ class PController extends Controller
 
             return response()->json([
                 'done_count' => $doneCount,
-                'ongoing_count' => $ongoingCount
+                'ongoing_count' => $ongoingCount,
+                'project_count' => $projectCount
             ], 200);
         } catch (Exception $e) {
             Log::error('Failed to count projects: ' . $e->getMessage(), ['exception' => $e]);
@@ -945,4 +948,38 @@ class PController extends Controller
         }
         
     }  
+
+
+
+
+    public function getAllProjectsForAdmin()
+    {
+        $user = Auth::user();
+    
+        // Check if the user is an admin
+        if ($user->role !== 'admin') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+    
+        try {
+            // Fetch all projects, including those from other companies
+            $projects = Project::with('client:id,first_name,last_name,phone_number','company:id,company_name','staff:id,first_name,last_name') // Eager load the client
+                ->get();
+    
+            return response()->json([
+                'projects' => $projects
+            ], 200);
+        } catch (\Throwable $th) {
+            Log::error('Failed to fetch projects for admin: ' . $th->getMessage());
+            return response()->json([
+                'message' => 'Failed to fetch projects'
+            ], 500);
+        }
+    }
+
+
+
 }

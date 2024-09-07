@@ -65,7 +65,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/tasks/archi', [TaskController::class, 'getArchiWorksTasks']);
 
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
- 
+    Route::get('/admin/projects', [PController::class, 'getAllProjectsForAdmin']);
+    Route::get('/admin/users', [AController::class, 'getAllUsers']);
 
     Route::get('/clients-count-by-month', [AController::class, 'getClientsCountByMonth']); 
     Route::get('/staff-count-by-month', [AController::class, 'getStaffCountByMonth']); //not rendered
@@ -75,9 +76,11 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsPM', [PController::class, 'getProjectsPerMonth']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
-    Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']);
+    Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     
+
+
     Route::get('/CompanyProjects/{staffId}', [PController::class, 'getProjectsCounts']);
     Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']); 
     Route::post('/send-otp', [AController::class, 'sendOtp']); // to do

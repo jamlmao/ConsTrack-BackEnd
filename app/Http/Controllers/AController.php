@@ -175,7 +175,7 @@ class AController extends Controller
                         'role' => 'client',
                         'created_by' => $user->id, // Track who created the client
                         'updated_by' => $user->id, // Track who last updated the client
-                        'status' => 'Deactivated'
+                        'status' => 'Not Active'
                     ]);
         
                     if ($user->role === 'admin') {
@@ -628,7 +628,9 @@ class AController extends Controller
     
             // Fetch unique company names from staff_profiles
             $staffCompanies = StaffProfile::distinct()->pluck('company_id')->toArray();
-    
+            
+            $totalCount = $clientCount + $staffCount;
+
             // Merge and count unique company names
             $allCompanies = array_unique(array_merge($clientCompanies, $staffCompanies));
             $companyCount = count($allCompanies);
@@ -649,7 +651,8 @@ class AController extends Controller
                 'companycount' => $companyCount,
                 'OnGoingProjectCount' => $OnGoingProjectCount,
                 'completedProjectCount' => $completedProjectCount,
-                'delayedProjectCount' => $delayedProjectCount
+                'delayedProjectCount' => $delayedProjectCount,
+                'totalUserCount' => $totalCount
             ], 200);
         } catch (Exception $e) {
             Log::error('Failed to fetch counts: ' . $e->getMessage());
@@ -712,6 +715,47 @@ class AController extends Controller
         } catch (Exception $e) {
             Log::error('Failed to fetch all staff: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch all staff', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getAllUsers()
+    {
+        $user = Auth::user();
+
+        // Check if the user is an admin
+        if ($user->role !== 'admin') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+
+        try {
+            // Fetch all clients and staff
+            $clients = ClientProfile::with('user:id,role','company:id,company_name')->get(['id', 'first_name', 'last_name',  'phone_number', 'user_id','address','city','country','company_id']);
+            $staff = StaffProfile::with('user:id,role,status','company:id,company_name')->get(['id', 'first_name', 'last_name', 'phone_number', 'user_id','address','city','country','company_id']);
+      
+            
+            $users = $clients->merge($staff)->map(function ($profile) {
+                return [
+                    'id' => $profile->id,
+                    'first_name' => $profile->first_name,
+                    'last_name' => $profile->last_name,
+                    'phone_number' => $profile->phone_number,
+                    'role' => $profile->user ? $profile->user->role : null,
+                    'address' => $profile->address,
+                    'city' => $profile->city,
+                    'country' => $profile->country,
+                    'company_name' => $profile->company ? $profile->company->company_name : null,
+                    'status' => $profile->user ? $profile->user->status : null
+                ];
+            });
+
+            
+            return response()->json(['users' => $users], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch all users: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch all users', 'error' => $e->getMessage()], 500);
         }
     }
 
