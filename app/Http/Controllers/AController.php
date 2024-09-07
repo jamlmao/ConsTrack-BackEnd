@@ -643,6 +643,9 @@ class AController extends Controller
     
             // Fetch the count of projects with status "D" (Delayed)
             $delayedProjectCount = Project::where('status', 'D')->count();
+
+
+            $projectCount = Project::count();
     
             // Return the counts in a JSON response
             return response()->json([
@@ -652,7 +655,8 @@ class AController extends Controller
                 'OnGoingProjectCount' => $OnGoingProjectCount,
                 'completedProjectCount' => $completedProjectCount,
                 'delayedProjectCount' => $delayedProjectCount,
-                'totalUserCount' => $totalCount
+                'totalUserCount' => $totalCount,
+                'totalProjectCount' => $projectCount
             ], 200);
         } catch (Exception $e) {
             Log::error('Failed to fetch counts: ' . $e->getMessage());
