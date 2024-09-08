@@ -1051,15 +1051,20 @@ class PController extends Controller
 
             // Check if all tasks have a status of 'C'
             $allTasksCompleted = $tasks->every(function ($task) {
-                return $task->status === 'C';
+         
+                return $task->pt_status === 'C';
             });
 
             // Calculate the total budget used
-            $totalBudgetUsed = $tasks->sum('total_usedl_budget');
+            $totalBudgetUsed = $project->total_used_budget;
             $budgetUsedPercentage = ($totalBudgetUsed / $project->totalBudget) * 100;
-
+            
+            Log::info('Total Budget Used: ' . $totalBudgetUsed);
+            Log::info('Total Budget: ' . $project->totalBudget);
+            Log::info('Budget Used Percentage: ' . $budgetUsedPercentage);
+            Log::info('All Tasks Completed: ' . ($allTasksCompleted ? 'Yes' : 'No'));
             // Check if 95% of the total budget is used
-            if ($allTasksCompleted && $budgetUsedPercentage >= 95) {
+            if ($allTasksCompleted && $budgetUsedPercentage > 95) {
                 // Update the project status
                 $project->status = 'C';
                 $project->save();
