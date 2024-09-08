@@ -22,7 +22,7 @@ use App\Models\ProjectTasks;
 
 class TaskController extends Controller
 {
-    public function getGeneralTasks()
+    public function getGeneralTasks($projectId)
     {
         try {
             
@@ -31,11 +31,12 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     // Fetch resources for each task
                     $task->resources = DB::table('resources')
-                        ->where('task_id', $task->id) 
+                        ->where('task_id', $task->id)
                         ->get();
                         if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
                             $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
@@ -57,7 +58,7 @@ class TaskController extends Controller
         }
     }
 
-    public function getSiteWorksTasks()
+    public function getSiteWorksTasks($projectId)
     {
         try {
             
@@ -66,6 +67,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -85,12 +87,12 @@ class TaskController extends Controller
                 'tasks' => $tasks
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
+            Log::error('Error fetching tasks for category ' . $category . ' and project ID ' . $projectId . ': ' . $e->getMessage());
             return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
         }
     }
 
-    public function getConcreteWorksTasks()
+    public function getConcreteWorksTasks($projectId)
     {
         try {
             
@@ -99,6 +101,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -123,7 +126,7 @@ class TaskController extends Controller
         }
     }
 
-    public function getMetalWorksTasks()
+    public function getMetalWorksTasks($projectId)
     {
         try {
             
@@ -132,6 +135,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -157,7 +161,7 @@ class TaskController extends Controller
     }
 
 
-    public function getFormsAndScaffoldingWorksTasks()
+    public function getFormsAndScaffoldingWorksTasks($projectId)
     {
         try {
             
@@ -166,6 +170,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -192,7 +197,7 @@ class TaskController extends Controller
 
 
 
-    public function getSteelWorksTasks()
+    public function getSteelWorksTasks($projectId)
     {
         try {
             
@@ -201,6 +206,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -227,7 +233,7 @@ class TaskController extends Controller
 
 
 
-    public function getTinsWorksTasks()
+    public function getTinsWorksTasks($projectId)
     {
         try {
             
@@ -236,6 +242,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -262,7 +269,7 @@ class TaskController extends Controller
 
 
 
-    public function getPlasterWorksTasks()
+    public function getPlasterWorksTasks($projectId)
     {
         try {
             
@@ -271,6 +278,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -297,7 +305,7 @@ class TaskController extends Controller
 
 
 
-    public function getPaintsWorksTasks()
+    public function getPaintsWorksTasks($projectId)
     {
         try {
             
@@ -306,6 +314,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -332,7 +341,7 @@ class TaskController extends Controller
 
 
 
-    public function getPlumbingWorksTasks()
+    public function getPlumbingWorksTasks($projectId)
     {
         try {
             
@@ -341,6 +350,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -367,7 +377,7 @@ class TaskController extends Controller
 
 
 
-    public function getElectricalWorksTasks()
+    public function getElectricalWorksTasks($projectId)
     {
         try {
             
@@ -376,6 +386,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -402,7 +413,7 @@ class TaskController extends Controller
 
 
 
-    public function getCeilingWorksTasks()
+    public function getCeilingWorksTasks($projectId)
     {
         try {
             
@@ -411,6 +422,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')
@@ -435,7 +447,7 @@ class TaskController extends Controller
         }
     }
 
-    public function getArchiWorksTasks()
+    public function getArchiWorksTasks($projectId)
     {
         try {
             
@@ -444,6 +456,7 @@ class TaskController extends Controller
            
             $tasks = DB::table('project_tasks')
                 ->where('pt_task_desc', $category)
+                ->where('project_id', $projectId)
                 ->get()
                 ->map(function ($task) {
                     $task->resources = DB::table('resources')

@@ -37,6 +37,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
     Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
 
+    Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
+
     Route::get('/staff-with-extension', [AController::class, 'getStaffWithExtensionAndLicense']);
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
     Route::get('/projectD/{project_id}', [PController::class, 'getProjectDetails']);
@@ -50,26 +52,26 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
 
 
-    Route::get('/tasks/general', [TaskController::class, 'getGeneralTasks']);
-    Route::get('/tasks/site', [TaskController::class, 'getSiteWorksTasks']);
-    Route::get('/tasks/concrete', [TaskController::class, 'getConcreteWorksTasks']);
-    Route::get('/tasks/metal', [TaskController::class, 'getMetalWorksTasks']);
-    Route::get('/tasks/forms', [TaskController::class, 'getFormsAndScaffoldingWorksTasks']);
-    Route::get('/tasks/steel', [TaskController::class, 'getSteelWorksTasks']);
-    Route::get('/tasks/tins', [TaskController::class, 'getTinsWorksTasks']);
-    Route::get('/tasks/plaster', [TaskController::class, 'getPlasterWorksTasks']);
-    Route::get('/tasks/paint', [TaskController::class, 'getPaintsWorksTasks']);
-    Route::get('/tasks/plumbing', [TaskController::class, 'getPlumbingWorksTasks']);
-    Route::get('/tasks/electrical', [TaskController::class, 'getElectricalWorksTasks']);
-    Route::get('/tasks/ceiling', [TaskController::class, 'getCeilingWorksTasks']);
-    Route::get('/tasks/archi', [TaskController::class, 'getArchiWorksTasks']);
+    Route::get('/tasks/{projectId}/general', [TaskController::class, 'getGeneralTasks']);
+    Route::get('/tasks/{projectId}/site', [TaskController::class, 'getSiteWorksTasks']);
+    Route::get('/tasks/{projectId}/concrete', [TaskController::class, 'getConcreteWorksTasks']);
+    Route::get('/tasks/{projectId}/metal', [TaskController::class, 'getMetalWorksTasks']);
+    Route::get('/tasks/{projectId}/forms', [TaskController::class, 'getFormsAndScaffoldingWorksTasks']);
+    Route::get('/tasks/{projectId}/steel', [TaskController::class, 'getSteelWorksTasks']);
+    Route::get('/tasks/{projectId}/tins', [TaskController::class, 'getTinsWorksTasks']);
+    Route::get('/tasks/{projectId}/plaster', [TaskController::class, 'getPlasterWorksTasks']);
+    Route::get('/tasks/{projectId}/paint', [TaskController::class, 'getPaintsWorksTasks']);
+    Route::get('/tasks/{projectId}/plumbing', [TaskController::class, 'getPlumbingWorksTasks']);
+    Route::get('/tasks/{projectId}/electrical', [TaskController::class, 'getElectricalWorksTasks']);
+    Route::get('/tasks/{projectId}/ceiling', [TaskController::class, 'getCeilingWorksTasks']);
+    Route::get('/tasks/{projectId}/archi', [TaskController::class, 'getArchiWorksTasks']);
 
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
     Route::get('/admin/projects', [PController::class, 'getAllProjectsForAdmin']);
     Route::get('/admin/users', [AController::class, 'getAllUsers']);
 
     Route::get('/clients-count-by-month', [AController::class, 'getClientsCountByMonth']); 
-    Route::get('/staff-count-by-month', [AController::class, 'getStaffCountByMonth']); //not rendered
+    Route::get('/staffCountperMonth', [AController::class, 'getStaffCountByMonth']); //not rendered
 
     
     Route::get('/total', [PController::class, 'getTotalTaskCost']);

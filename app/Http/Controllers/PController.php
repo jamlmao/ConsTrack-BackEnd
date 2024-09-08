@@ -1023,4 +1023,55 @@ class PController extends Controller
             return response()->json(['message' => 'Failed to fetch client projects', 'error' => $e->getMessage()], 500);
         }
     }
+
+    public function updateProjectStatus($projectId)
+    {
+        try {
+            $user = Auth::user();
+
+            // Check if the user is a staff member
+            if ($user->role !== 'staff') {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            // Fetch the project
+            $project = Project::find($projectId);
+
+            if (!$project) {
+                return response()->json(['message' => 'Project not found'], 404);
+            }
+
+            // Check if the staff member is assigned to the project
+            if ($project->staff_id !== $user->staffProfile->id) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            // Fetch all tasks associated with the project
+            $tasks = Task::where('project_id', $projectId)->get();
+
+            // Check if all tasks have a status of 'C'
+            $allTasksCompleted = $tasks->every(function ($task) {
+                return $task->status === 'C';
+            });
+
+            // Calculate the total budget used
+            $totalBudgetUsed = $tasks->sum('total_usedl_budget');
+            $budgetUsedPercentage = ($totalBudgetUsed / $project->totalBudget) * 100;
+
+            // Check if 95% of the total budget is used
+            if ($allTasksCompleted && $budgetUsedPercentage >= 95) {
+                // Update the project status
+                $project->status = 'C';
+                $project->save();
+
+                return response()->json(['message' => 'Project status updated successfully'], 200);
+            } else {
+                return response()->json(['message' => 'Conditions not met for updating project status'], 400);
+            }
+        } catch (Exception $e) {
+            Log::error('Failed to update project status: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to update project status', 'error' => $e->getMessage()], 500);
+        }
+    }
+
 }
