@@ -6,6 +6,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
 use App\Http\Controllers\TaskController;
+use App\Http\Controllers\AppointmentController;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -50,6 +51,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     
     Route::get('/Alltask', [TaskController::class, 'getAllTasksWithResources']);
 
+
+    Route::post('/appointments', [AppointmentController::class, 'setAppointment']);
 
 
     Route::get('/tasks/{projectId}/general', [TaskController::class, 'getGeneralTasks']);

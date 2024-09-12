@@ -29,7 +29,7 @@ class ClientProfile extends Model
     // Define the relationship with the User model
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, "user_id");
     }
 
     // Define the relationship with the StaffProfile model for the same company name 
