@@ -142,7 +142,7 @@ class AController extends Controller
         
             $validatedData = $request->validate([
                 'name' => 'required|string|max:20',
-                'email' => 'required|string|email|max:20|unique:users',
+                'email' => 'required|string|email|max:100|unique:users',
                 'password' => [
                     'required',
                     'string',
