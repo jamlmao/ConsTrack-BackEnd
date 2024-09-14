@@ -47,6 +47,16 @@ class Project extends Model
           return $this->belongsTo(Company::class, 'company_id');
       }
 
+      public function staffUser()
+      {
+          return $this->belongsTo(User::class, 'staff_id');
+      }
+  
+      public function clientUser()
+      {
+          return $this->belongsTo(User::class, 'client_id');
+      }
+
 }
 
 

@@ -1,11 +1,15 @@
 <?php
 namespace App\Http\Controllers;
-
+use App\Models\User;
+use App\Mail\CompleteTask;
+use App\Mail\TaskDue;
+use App\Mail\TaskDueTomorrow;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\ClientProfile;
 use App\Models\StaffProfile;
 use App\Models\ProjectLogs;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -394,14 +398,23 @@ class PController extends Controller
                         'resources.*.qty' => 'required|integer',
                         'resources.*.unit_cost' => 'required|numeric',
                     ]);
-            
+                    
                     // Add the project_id to the validated data
                     $validatedData['project_id'] = $project_id;
             
                     // Fetch the project's total budget
                     $project = Project::findOrFail($project_id);
                     $totalBudget = $project->totalBudget;
+
+
+                    $staffProfile = StaffProfile::findOrFail($project->staff_id);
+                    $clientProfile = ClientProfile::findOrFail($project->client_id);
             
+                    // Get the user IDs from the profiles
+                    $staffUserId = $staffProfile->user_id;
+                    $clientUserId = $clientProfile->user_id;
+
+
                     // Calculate the total allocated budget of all existing tasks
                     $totalAllocatedBudget = Task::where('project_id', $project_id)->sum('pt_allocated_budget');
             
@@ -480,6 +493,23 @@ class PController extends Controller
                         $resource['task_id'] = $task->id;
                     $resource['total_cost'] = $resource['qty'] * $resource['unit_cost'];
                     Resources::create($resource);
+                }
+
+                 // Fetch the staff and client emails from the users table
+                $staffUser = User::findOrFail($staffUserId);
+                $clientUser = User::findOrFail($clientUserId);
+                $staffEmail = $staffUser->email;
+                $clientEmail = $clientUser->email;
+                Log::info('Client email: ' . $clientEmail); 
+                Log::info('Staff email: ' . $staffEmail);
+          
+                if ($validatedData['pt_status'] == 'D') {
+                    Mail::to($clientEmail)->send(new TaskDue($task));
+                }
+        
+                // Check if the task is due tomorrow
+                if ($completionDate->isTomorrow()) {
+                    Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
                 }
         
                 return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources'=>$resource], 201);
@@ -902,7 +932,8 @@ class PController extends Controller
     
             // Update task status to 'C'
             $task->pt_status = 'C';
-    
+           
+
             // Find the project associated with the task
             $project = Project::findOrFail($task->project_id);
             Log::info('Project found: ' . $project->id);
@@ -940,6 +971,14 @@ class PController extends Controller
             // Save the updated task and project
             $task->save();
             $project->save();
+
+            $clientProfile = ClientProfile::findOrFail($project->client_id);
+            $clientUser = User::findOrFail($clientProfile->user_id);
+            $clientEmail = $clientUser->email;
+            Log::info('Client email: ' . $clientEmail);
+
+            Mail::to($clientEmail)->send(new CompleteTask($task));
+
             Log::info('Task and project saved successfully');
     
             return response()->json([
