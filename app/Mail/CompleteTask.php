@@ -30,7 +30,8 @@ class CompleteTask extends Mailable
      */
     public function build()
     {
-        return $this->subject('Task Completed')
+        return $this->from('your-email@example.com', 'Constrack')
+                    ->subject('Task Completed')
                     ->view('emails.complete_task')
                     ->with(['task' => $this->task]);
     }

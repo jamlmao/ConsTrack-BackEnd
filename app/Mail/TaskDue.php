@@ -30,7 +30,8 @@ class TaskDue extends Mailable
      */
     public function build()
     {
-        return $this->subject('Due Task')
+        return $this->from('your-email@example.com', 'Constrack')
+                    ->subject('Due Task')
                     ->view('emails.task_due')
                     ->with(['task' => $this->task]);
     }

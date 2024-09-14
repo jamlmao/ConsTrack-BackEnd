@@ -21,7 +21,12 @@ class Task extends Model
         'pt_allocated_budget',
         'pt_task_desc',
         'update_img',
-        'update_file'
+        'update_file',
+        'week1_img',
+        'week2_img',
+        'week3_img',
+        'week4_img',
+        'week5_img',
 
     ];
 

@@ -918,81 +918,110 @@ class PController extends Controller
     
 
 
-
-    public function updateTask(Request $request, $taskId)
-    {
-        $request->validate([
-            'update_img' => 'required|string'
-        ]);
-    
-        try {
-            // Find the task by ID
-            $task = Task::findOrFail($taskId);
-            Log::info('Task found: ' . $taskId);
-    
-            // Update task status to 'C'
-            $task->pt_status = 'C';
-           
-
-            // Find the project associated with the task
-            $project = Project::findOrFail($task->project_id);
-            Log::info('Project found: ' . $project->id);
-    
-         
-            // Update the used budget
-            if ($project->total_used_budget !== null) {
-                $project->total_used_budget += $task->pt_allocated_budget;
-            } else {
-                $project->total_used_budget = $task->pt_allocated_budget;
-            }
-            Log::info('Updated project used budget: ' . $project->total_used_budget);
-    
-      
-            if (!empty($request->update_img)) {
-                $decodedImage = base64_decode($request->update_img, true);
-                if ($decodedImage === false) {
-                    Log::error('Invalid base64 image');
-                    return response()->json(['message' => 'Invalid base64 image'], 400);
-                }
-    
-                $imageName = time() . '.webp';
-                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
-    
-                if (!$isSaved) {
-                    Log::error('Failed to save image');
-                    return response()->json(['message' => 'Failed to save image'], 500);
-                }
-    
-                $photoPath = asset('storage/photos/projects/' . $imageName);
-                $task->update_img = $photoPath;
-                Log::info('Image saved successfully: ' . $photoPath);
-            }
-    
-            // Save the updated task and project
-            $task->save();
-            $project->save();
-
-            $clientProfile = ClientProfile::findOrFail($project->client_id);
-            $clientUser = User::findOrFail($clientProfile->user_id);
-            $clientEmail = $clientUser->email;
-            Log::info('Client email: ' . $clientEmail);
-
-            Mail::to($clientEmail)->send(new CompleteTask($task));
-
-            Log::info('Task and project saved successfully');
-    
-            return response()->json([
-                'message' => 'Task updated successfully',
-                'used_budget' => $project->total_used_budget,
-                'update_img' => $task->update_img
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while updating the task'], 500);
-        }
+        public function updateTask(Request $request, $taskId)
+        {
+            $request->validate([
+                'placeholder_image' => 'nullable|string'
+            ]);
         
-    }  
+            try {
+                // Find the task by ID
+                $task = Task::findOrFail($taskId);
+                Log::info('Task found: ' . $taskId);
+        
+                // Find the project associated with the task
+                $project = Project::findOrFail($task->project_id);
+                Log::info('Project found: ' . $project->id);
 
+                  // Determine the current week based on the task start date
+                $taskStartDate = Carbon::parse($task->pt_starting_date);
+                $taskCompletionDate = Carbon::parse($task->pt_completion_date);
+                $currentDate = Carbon::now();
+                $weekNumber = $currentDate->diffInWeeks($taskStartDate) + 1;
+                $taskDuration = $taskCompletionDate->diffInWeeks($taskStartDate) + 1;
+                Log::info('Task start date: ' . $taskStartDate);
+                Log::info('Task completion date: ' . $taskCompletionDate);
+                Log::info('Current date: ' . $currentDate);
+                Log::info('Current week number: ' . $weekNumber);
+                Log::info('Task duration: ' . $taskDuration);
+        
+                // Determine if the task is in its last week
+                $isLastWeek = ($weekNumber >= $taskDuration);
+                Log::info('Is last week: ' . ($isLastWeek ? 'Yes' : 'No'));
+        
+                // Function to save image and update the corresponding column
+                $saveImage = function($imageData, $column) use ($task) {
+                    $decodedImage = base64_decode($imageData, true);
+                    if ($decodedImage === false) {
+                        Log::error('Invalid base64 image for ' . $column);
+                        return response()->json(['message' => 'Invalid base64 image'], 400);
+                    }
+        
+                    $imageName = time() . '_' . $column . '.webp';
+                    $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+        
+                    if (!$isSaved) {
+                        Log::error('Failed to save image for ' . $column);
+                        return response()->json(['message' => 'Failed to save image'], 500);
+                    }
+        
+                    $photoPath = asset('storage/photos/projects/' . $imageName);
+                    $task->$column = $photoPath;
+                    Log::info('Image saved successfully: ' . $photoPath);
+                };
+        
+                // Handle the placeholder_image field
+                if (!empty($request->placeholder_image)) {
+                    if ($isLastWeek) {
+                        $saveImage($request->placeholder_image, 'update_img');
+        
+                        // Update task status to 'C' as it's the final image
+                        $task->pt_status = 'C';
+                        // Notify the client
+                        $clientProfile = ClientProfile::findOrFail($project->client_id);
+                        $clientUser = User::findOrFail($clientProfile->user_id);
+                        $clientEmail = $clientUser->email;
+                        Log::info('Client email: ' . $clientEmail);
+                
+                        Mail::to($clientEmail)->send(new CompleteTask($task));
+                        Log::info('Task status updated to completed for task: ' . $taskId);
+        
+                        // Update the used budget only if the task is complete
+                        if ($project->total_used_budget !== null) {
+                            $project->total_used_budget += $task->pt_allocated_budget;
+                        } else {
+                            $project->total_used_budget = $task->pt_allocated_budget;
+                        }
+                        Log::info('Updated project used budget: ' . $project->total_used_budget);
+                    } else {
+                        $imgKey = 'week' . $weekNumber . '_img';
+                        $saveImage($request->placeholder_image, $imgKey);
+                    }
+                }
+        
+                // Save the updated task and project
+                $task->save();
+                $project->save();
+        
+               
+        
+                Log::info('Task and project saved successfully');
+        
+                return response()->json([
+                    'message' => 'Task updated successfully',
+                    'used_budget' => $project->total_used_budget,
+                    'update_img' => $task->update_img,
+                    'week1_img' => $task->week1_img,
+                    'week2_img' => $task->week2_img,
+                    'week3_img' => $task->week3_img,
+                    'week4_img' => $task->week4_img,
+                    'week5_img' => $task->week5_img
+                ], 200);
+            } catch (\Exception $e) {
+                Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
+                return response()->json(['error' => 'An error occurred while updating the task'], 500);
+            }
+        }
 
 
 
