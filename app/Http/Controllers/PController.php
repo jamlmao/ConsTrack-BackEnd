@@ -219,6 +219,11 @@ class PController extends Controller
                         'last_name' => $project->client->last_name,
                         'phone_number' => $project->client->phone_number,
                     ],
+                    'staff_in_charge' => [
+                    'staff_first_name' => $project->staff->first_name,
+                    'staff_last_name' => $project->staff->last_name,
+                    'extension_name' => $project->staff->extension_name,
+        ],
                 ];
             });
     
