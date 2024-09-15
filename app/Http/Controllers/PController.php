@@ -22,6 +22,7 @@ use Carbon\Carbon;
 use Intervention\Image\Facades\Image;
 use App\Models\Company;
 use App\Models\Resources;
+use DateTime;
 
 class PController extends Controller
 {
@@ -1179,6 +1180,43 @@ class PController extends Controller
 
         // Return the projects as a JSON response
         return response()->json($projects);
+    }
+
+    public function getProjectCountByMonth()
+    {
+        try {
+            // Fetch projects and group them by month and company
+            $projects = DB::table('projects')
+                ->join('companies', 'projects.company_id', '=', 'companies.id')
+                ->select(
+                    DB::raw('YEAR(projects.created_at) as year'),
+                    DB::raw('MONTH(projects.created_at) as month'),
+                    DB::raw('COUNT(projects.id) as project_count'),
+                    DB::raw('COUNT(DISTINCT companies.id) as company_count')
+                )
+                ->groupBy('year', 'month')
+                ->orderBy('year', 'asc')
+                ->orderBy('month', 'asc')
+                ->get();
+    
+            // Format the results
+            $formattedProjects = $projects->map(function ($project) {
+                $dateObj = DateTime::createFromFormat('!m', $project->month);
+                $monthName = strtolower($dateObj->format('M')); // Use 'M' for short month name
+                return [
+                    'year' => $project->year,
+                    'count' => $project->project_count,
+                    'month' => $monthName,
+                    'company_count' => $project->company_count
+                ];
+            });
+    
+            // Return the projects count by month as a JSON response
+            return response()->json(['projects_per_month' => $formattedProjects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects count by month: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch projects count by month', 'message' => $e->getMessage()], 500);
+        }
     }
 
 }

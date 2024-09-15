@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use App\Models\Project;
 use App\Models\Company;
 use Illuminate\Support\Facades\Validator;
+use DateTime;
 
 class AController extends Controller
 {
@@ -475,7 +476,41 @@ class AController extends Controller
             }
         }
 
-
+      
+        public function getClientCountByMonthA()
+        {
+            try {
+                // Fetch clients and group them by month
+                $clients = DB::table('client_profiles')
+                    ->select(
+                        DB::raw('YEAR(created_at) as year'),
+                        DB::raw('MONTH(created_at) as month'),
+                        DB::raw('COUNT(id) as client_count')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+    
+                // Format the results
+                $formattedClients = $clients->map(function ($client) {
+                    $dateObj = DateTime::createFromFormat('!m', $client->month);
+                    $monthName = strtolower($dateObj->format('M')); // Use 'M' for short month name
+                    return [
+                        'year' => $client->year,
+                        'count' => $client->client_count,
+                        'month' => $monthName
+                    ];
+                });
+    
+                // Return the clients count by month as a JSON response
+                return response()->json($formattedClients);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch clients count by month: ' . $e->getMessage());
+                return response()->json(['error' => 'Failed to fetch clients count by month', 'message' => $e->getMessage()], 500);
+            }
+        }
+        
  
         public function getStaffCountByMonth()
         {
@@ -522,6 +557,47 @@ class AController extends Controller
                 return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);
             }
         }
+
+        public function getStaffCountByMonthA()
+        {
+            try {
+                // Fetch staff and group them by month
+                $staff = DB::table('staff_profiles')
+                    ->select(
+                        DB::raw('YEAR(created_at) as year'),
+                        DB::raw('MONTH(created_at) as month'),
+                        DB::raw('COUNT(id) as staff_count')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+    
+                // Format the results
+                $formattedStaff = $staff->map(function ($staff) {
+                    $dateObj = DateTime::createFromFormat('!m', $staff->month);
+                    $monthName = strtolower($dateObj->format('M')); // Use 'M' for short month name
+                    return [
+                        'year' => $staff->year,
+                        'count' => $staff->staff_count,
+                        'month' => $monthName
+                    ];
+                });
+    
+                // Return the staff count by month as a JSON response
+                return response()->json(['staff_per_month' => $formattedStaff], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch staff count by month: ' . $e->getMessage());
+                return response()->json(['error' => 'Failed to fetch staff count by month', 'message' => $e->getMessage()], 500);
+            }
+        }
+
+
+
+
+
+
+
 
 
         private function getExtensionName($extensionName)
