@@ -338,6 +338,45 @@ class AController extends Controller
             }
         }
 
+        public function getAllStaffFromSameCompany()
+        {
+            try {
+                // Get the logged-in user
+                $user = Auth::user();
+        
+                // Fetch the client profile associated with the user
+                $clientProfile = DB::table('client_profiles')
+                    ->where('user_id', $user->id)
+                    ->first();
+        
+                // Check if the client profile exists
+                if (!$clientProfile) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'User does not have an associated client profile.'
+                    ], 400);
+                }
+        
+                // Get the company ID from the client profile
+                $companyId = $clientProfile->company_id;
+        
+                // Fetch all staff members from the same company
+                $staffMembers = DB::table('staff_profiles')
+                    ->where('company_id', $companyId)
+                    ->get(['id', 'first_name', 'last_name', 'extension_name', 'license_number', 'phone_number']);
+        
+                return response()->json([
+                    'staff' => $staffMembers
+                ], 200);
+            } catch (\Throwable $th) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $th->getMessage()
+                ], 500);
+            }
+        }
+
+       
         public function getAllClientsForAdmin()
         {
             // Get the logged-in user
@@ -724,7 +763,7 @@ class AController extends Controller
     public function getAllUsers()
     {
         $user = Auth::user();
-
+    
         // Check if the user is an admin
         if ($user->role !== 'admin') {
             return response()->json([
@@ -732,31 +771,41 @@ class AController extends Controller
                 'message' => 'Unauthorized'
             ], 403);
         }
-
+    
         try {
-            // Fetch all clients and staff
-            $clients = ClientProfile::with('user:id,role','company:id,company_name')->get(['id', 'first_name', 'last_name',  'phone_number', 'user_id','address','city','country','company_id']);
-            $staff = StaffProfile::with('user:id,role,status','company:id,company_name')->get(['id', 'first_name', 'last_name', 'phone_number', 'user_id','address','city','country','company_id']);
-      
-            
-            $users = $clients->merge($staff)->map(function ($profile) {
+            // Fetch all users except those with the role 'admin'
+            $users = User::where('role', '!=', 'admin')
+                ->with([
+                    'clientProfile' => function ($query) {
+                        $query->select('id', 'first_name', 'last_name', 'phone_number', 'user_id', 'address', 'city', 'country', 'company_id');
+                    },
+                    'staffProfile' => function ($query) {
+                        $query->select('id', 'first_name', 'last_name', 'phone_number', 'user_id', 'address', 'city', 'country', 'company_id');
+                    },
+                    'clientProfile.company:id,company_name',
+                    'staffProfile.company:id,company_name'
+                ])
+                ->get(['id', 'role', 'status']);
+    
+            // Map the users to include profile information
+            $users = $users->map(function ($user) {
+                $profile = $user->clientProfile ?? $user->staffProfile;
                 return [
-                    'id' => $profile->id,
-                    'first_name' => $profile->first_name,
-                    'last_name' => $profile->last_name,
-                    'phone_number' => $profile->phone_number,
-                    'role' => $profile->user ? $profile->user->role : null,
-                    'address' => $profile->address,
-                    'city' => $profile->city,
-                    'country' => $profile->country,
-                    'company_name' => $profile->company ? $profile->company->company_name : null,
-                    'status' => $profile->user ? $profile->user->status : null
+                    'id' => $profile ? $profile->id : null,
+                    'first_name' => $profile ? $profile->first_name : null,
+                    'last_name' => $profile ? $profile->last_name : null,
+                    'phone_number' => $profile ? $profile->phone_number : null,
+                    'role' => $user->role,
+                    'address' => $profile ? $profile->address : null,
+                    'city' => $profile ? $profile->city : null,
+                    'country' => $profile ? $profile->country : null,
+                    'company_name' => $profile && $profile->company ? $profile->company->company_name : null,
+                    'status' => $user->status
                 ];
             });
-
-            
+    
             return response()->json(['users' => $users], 200);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             Log::error('Failed to fetch all users: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch all users', 'error' => $e->getMessage()], 500);
         }

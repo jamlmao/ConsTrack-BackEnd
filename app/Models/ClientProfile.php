@@ -42,4 +42,9 @@ class ClientProfile extends Model
     {
         return $this->belongsTo(Company::class);
     }
+
+    public function project()
+    {
+        return $this->hasOne(Project::class, 'client_id', 'id');
+    }
 }

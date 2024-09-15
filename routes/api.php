@@ -41,6 +41,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
 
     Route::get('/staff-with-extension', [AController::class, 'getStaffWithExtensionAndLicense']);
+    Route::get('/fetchstaff', [AController::class, 'getAllStaffFromSameCompany']);
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
     Route::get('/projectD/{project_id}', [PController::class, 'getProjectDetails']);
     Route::get('/sortedTask/{project_id}', [PController::class, 'getSortedProjectTasks']);
@@ -53,7 +54,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
 
     Route::post('/appointments', [AppointmentController::class, 'setAppointment']);
-
+    Route::get('/staff/appointments', [AppointmentController::class, 'getStaffAppointments']);
+    Route::put('/appointments/{id}/status', [AppointmentController::class, 'updateStatus']);
+    Route::get('/notifications', [AppointmentController::class, 'getNotifications']);
 
     Route::get('/tasks/{projectId}/general', [TaskController::class, 'getGeneralTasks']);
     Route::get('/tasks/{projectId}/site', [TaskController::class, 'getSiteWorksTasks']);
