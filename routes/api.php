@@ -25,7 +25,7 @@ use Dompdf\Options;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/loginA', [AuthController::class, 'login']);
-
+Route::get('/projects/completed-and-ongoing', [PController::class, 'getCompletedAndOngoingProjects']);
 
 
 

@@ -1172,4 +1172,13 @@ class PController extends Controller
         }
     }
 
+    public function getCompletedAndOngoingProjects()
+    {
+        // Fetch all projects with status 'completed' or 'ongoing'
+        $projects = Project::whereIn('status', ['C', 'OG'])->get();
+
+        // Return the projects as a JSON response
+        return response()->json($projects);
+    }
+
 }
