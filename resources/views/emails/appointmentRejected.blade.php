@@ -4,12 +4,15 @@
     <title>Appointment Rejected</title>
 </head>
 <body>
-    <h1>Appointment Rejected</h1>
-    <p>Your appointment has been rejected due to an unforeseen issue.</p>
-    <p>Details:</p>
+    <p>Dear {{ strtoupper($appointment->client->first_name) }} {{ strtoupper($appointment->client->last_name) }},</p>
+    <p>We regret to inform you that your appointment has been rejected.</p>
+    <p>Here are some available dates for rescheduling:</p>
     <ul>
-        <li>Description: {{ $appointment->description }}</li>
-        <li>Date and Time: {{ $appointment->appointment_datetime }}</li>
+        @foreach ($availableDates as $date)
+            <li>{{ $date }}</li>
+        @endforeach
     </ul>
+    <p>Please reschedule your appointment.</p>
+    <p>Thank you.</p>
 </body>
 </html>

@@ -154,26 +154,26 @@ class AppointmentController extends Controller
     public function updateStatus(Request $request, $id)
     {
         Log::info('updateStatus called with ID: ' . $id);
-
+    
         try {
             // Validate the request
             $request->validate([
                 'status' => 'required|string|in:A,R'
             ]);
-
+    
             Log::info('Request validated');
-
+    
             // Find the appointment by ID
             $appointment = Appointment::findOrFail($id);
-
+    
             Log::info('Appointment found: ' . $appointment->id);
-
+    
             // Update the status
             $appointment->status = $request->input('status');
             $appointment->save();
-
+    
             Log::info('Appointment status updated to: ' . $appointment->status);
-
+    
             // Fetch the client and user email
             $client = $appointment->client;
             if (!$client) {
@@ -183,7 +183,7 @@ class AppointmentController extends Controller
                     'message' => 'Client not found.'
                 ], 500);
             }
-
+    
             $user = $client->user;
             if (!$user || !$user->email) {
                 Log::error('User email not found for client ID: ' . $client->id);
@@ -192,18 +192,22 @@ class AppointmentController extends Controller
                     'message' => 'User email not found.'
                 ], 500);
             }
-
+    
             Log::info('User email: ' . $user->email);
-
+    
             // Send email based on status
             if ($appointment->status == 'A') {
                 Mail::to($user->email)->send(new AppointmentAccepted($appointment));
                 Log::info('AppointmentAccepted email sent to: ' . $user->email);
             } elseif ($appointment->status == 'R') {
-                Mail::to($user->email)->send(new AppointmentRejected($appointment));
+                // Get available dates excluding Saturdays and Sundays
+                $availableDates = $this->getAvailableDates();
+    
+                // Send rejection email with available dates
+                Mail::to($user->email)->send(new AppointmentRejected($appointment, $availableDates));
                 Log::info('AppointmentRejected email sent to: ' . $user->email);
             }
-
+    
             return response()->json([
                 'status' => true,
                 'message' => 'Appointment status updated successfully.',
@@ -217,6 +221,29 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
+    
+    private function getAvailableDates()
+    {
+        $today = Carbon::today();
+        $endOfMonth = $today->copy()->endOfMonth();
+        $availableDates = [];
+    
+        while ($today->lte($endOfMonth) && count($availableDates) < 10) {
+            if (!$today->isWeekend() && !$this->isDateTaken($today)) {
+                $availableDates[] = $today->format('Y-m-d');
+            }
+            $today->addDay();
+        }
+    
+        return $availableDates;
+    }
+    
+    private function isDateTaken($date)
+    {
+        return Appointment::whereDate('appointment_datetime', $date)->exists();
+    }
+
+
 
     public function getNotifications(Request $request)
     {
