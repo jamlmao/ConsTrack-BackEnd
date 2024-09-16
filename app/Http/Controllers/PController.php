@@ -263,9 +263,15 @@ class PController extends Controller
             $ongoingProjectCount = Project::where('company_id', $companyId)
                 ->where('status', 'OG') // Assuming 'ongoing' is the status for ongoing projects
                 ->count();
+
+
+            $dueProjectCount = Project::where('company_id', $companyId)
+                ->where('status', 'D') // Assuming 'ongoing' is the status for ongoing projects
+                ->count();
     
             return response()->json([
                 'project_count' => $projectCount,
+                'due' => $dueProjectCount,
                 'done' => $doneProjectCount,
                 'ongoing' => $ongoingProjectCount
             ], 200);
