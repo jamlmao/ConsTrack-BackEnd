@@ -399,7 +399,6 @@ class PController extends Controller
                         'pt_starting_date' => 'required|date',
                         'pt_photo_task' => 'nullable|string', // Base64 encoded image
                         'pt_file_task' => 'nullable|string',
-                        'pt_task_desc' => 'required|string', // Should be dropdown
                         'resources' => 'required|array',
                         'resources.*.resource_name' => 'required|string',
                         'resources.*.qty' => 'required|integer',
@@ -525,6 +524,52 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
             }
         }
+
+
+
+
+        public function addCategory(Request $request, $project_id)
+        {
+            try {
+                // Validate the incoming request for category
+                $validatedData = $request->validate([
+                    'category_name' => 'required|string',
+                    'category_allocated_budget' => 'required|integer',
+                ]);
+        
+                // Find the project by ID
+                $project = Project::find($project_id);
+        
+                if (!$project) {
+                    // Return a 404 response if the project is not found
+                    return response()->json(['message' => 'Project not found'], 404);
+                }
+        
+                // Add the new category to the project
+                $category = new Category();
+                $category->category_name = $validatedData['category_name'];
+                $category->c_allocated_budget = $validatedData['category_allocated_budget'];
+                $category->project_id = $project->id; // Set the project_id
+        
+                // Save the category
+                $category->save();
+        
+                // Return a success response
+                return response()->json(['message' => 'Category added successfully', 'category' => $category], 201);
+            } catch (\Exception $e) {
+                // Return an error response
+                return response()->json(['message' => 'Failed to add category', 'error' => $e->getMessage()], 500);
+            }
+        }
+
+
+
+
+        public function addTaskv2(){
+            
+        }
+
+
 
     public function getProjectTaskImages($project_id)
         {
