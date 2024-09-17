@@ -22,6 +22,7 @@ use Carbon\Carbon;
 use Intervention\Image\Facades\Image;
 use App\Models\Company;
 use App\Models\Resources;
+use App\Models\Category;
 use DateTime;
 
 class PController extends Controller
@@ -48,6 +49,7 @@ class PController extends Controller
                 'site_city' => 'required|string',
                 'site_province' => 'required|string',
                 'project_name'=>'required|string',
+                'project_type' => 'required|string',
                 'client_id' => 'required|integer|exists:client_profiles,id',
                 'completion_date' => 'required|date',
                 'starting_date' => 'required|date',
@@ -541,7 +543,7 @@ class PController extends Controller
                 $project = Project::find($project_id);
         
                 if (!$project) {
-                    // Return a 404 response if the project is not found
+             
                     return response()->json(['message' => 'Project not found'], 404);
                 }
         
@@ -557,7 +559,7 @@ class PController extends Controller
                 // Return a success response
                 return response()->json(['message' => 'Category added successfully', 'category' => $category], 201);
             } catch (\Exception $e) {
-                // Return an error response
+              
                 return response()->json(['message' => 'Failed to add category', 'error' => $e->getMessage()], 500);
             }
         }
@@ -565,8 +567,138 @@ class PController extends Controller
 
 
 
-        public function addTaskv2(){
-            
+        public function addTaskv2(Request $request, $project_id)
+        {
+            try {
+                // Validate the incoming request for task
+                $validatedData = $request->validate([
+                    'pt_task_name' => 'required|string',
+                    'pt_completion_date' => 'required|date',
+                    'pt_starting_date' => 'required|date',
+                    'pt_photo_task' => 'nullable|string', // Base64 encoded image
+                    'pt_file_task' => 'nullable|string',
+                    'resources' => 'required|array',
+                    'resources.*.resource_name' => 'required|string',
+                    'resources.*.qty' => 'required|integer',
+                    'resources.*.unit_cost' => 'required|numeric',
+                    'category_id' => 'required|exists:categories,id', // Validate category_id
+                ]);
+        
+                // Add the project_id to the validated data
+                $validatedData['project_id'] = $project_id;
+        
+                // Fetch the project's total budget
+                $project = Project::findOrFail($project_id);
+                $totalBudget = $project->totalBudget;
+        
+                $staffProfile = StaffProfile::findOrFail($project->staff_id);
+                $clientProfile = ClientProfile::findOrFail($project->client_id);
+        
+                // Get the user IDs from the profiles
+                $staffUserId = $staffProfile->user_id;
+                $clientUserId = $clientProfile->user_id;
+        
+                // Calculate the total allocated budget of all existing tasks
+                $totalAllocatedBudget = Task::where('project_id', $project_id)->sum('pt_allocated_budget');
+        
+                // Calculate the total resource cost
+                $resources = $validatedData['resources'];
+                $totalResourceCost = 0;
+        
+                foreach ($resources as $resource) {
+                    $totalResourceCost += $resource['qty'] * $resource['unit_cost'];
+                }
+        
+                // Check if adding the new task's budget exceeds the total budget
+                if ($totalAllocatedBudget + $totalResourceCost > $totalBudget) {
+                    return response()->json(['message' => 'Cannot add task: allocated budget exceeds the total project budget'], 400);
+                }
+        
+                // Check if the completion date has passed
+                $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+                $currentDate = Carbon::now();
+        
+                if ($completionDate->isPast()) {
+                    $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+                } else {
+                    $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                }
+        
+                // Decode the base64 encoded photo, if present
+                if (!empty($validatedData['pt_photo_task'])) {
+                    $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
+                    if ($decodedImage === false) {
+                        Log::error('Invalid base64 image');
+                        return response()->json(['message' => 'Invalid base64 image'], 400);
+                    }
+                    // Save the decoded image to a file or storage
+                    $imageName = time() . '.webp';
+                    $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
+        
+                    if (!$isSaved) {
+                        Log::error('Failed to save image');
+                        return response()->json(['message' => 'Failed to save image'], 500);
+                    }
+        
+                    $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+                    $validatedData['pt_photo_task'] = $photoPath;
+                }
+        
+                // Decode the base64 encoded PDF, if present
+                if (!empty($validatedData['pt_file_task'])) {
+                    $decodedPdf = base64_decode($validatedData['pt_file_task'], true);
+                    if ($decodedPdf === false) {
+                        Log::error('Invalid base64 PDF');
+                        return response()->json(['message' => 'Invalid base64 PDF'], 400);
+                    }
+        
+                    $pdfName = time() . '.pdf';
+                    $isSaved = Storage::disk('public')->put('pdfs/tasks/' . $pdfName, $decodedPdf);
+        
+                    if (!$isSaved) {
+                        Log::error('Failed to save PDF');
+                        return response()->json(['message' => 'Failed to save PDF'], 500);
+                    }
+        
+                    $pdfPath = asset('storage/pdfs/tasks/' . $pdfName); // Set the PDF path
+                    $validatedData['pt_file_task'] = $pdfPath;
+                }
+        
+                // Create a new task with the validated data and calculated allocated budget
+                $taskData = array_merge($validatedData, ['pt_allocated_budget' => $totalResourceCost]);
+                $task = Task::create($taskData);
+                $task->photo_path = $validatedData['pt_photo_task'] ?? null;
+                $task->pdf_path = $validatedData['pt_file_task'] ?? null;
+        
+                // Add resources to the database
+                foreach ($resources as $resource) {
+                    $resource['task_id'] = $task->id;
+                    $resource['total_cost'] = $resource['qty'] * $resource['unit_cost'];
+                    Resources::create($resource);
+                }
+        
+                // Fetch the staff and client emails from the users table
+                $staffUser = User::findOrFail($staffUserId);
+                $clientUser = User::findOrFail($clientUserId);
+                $staffEmail = $staffUser->email;
+                $clientEmail = $clientUser->email;
+                Log::info('Client email: ' . $clientEmail); 
+                Log::info('Staff email: ' . $staffEmail);
+        
+                if ($validatedData['pt_status'] == 'D') {
+                    Mail::to($clientEmail)->send(new TaskDue($task));
+                }
+        
+                // Check if the task is due tomorrow
+                if ($completionDate->isTomorrow()) {
+                    Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
+                }
+        
+                return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);
+            } catch (Exception $e) {
+                Log::error('Failed to add task: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
+            }
         }
 
 

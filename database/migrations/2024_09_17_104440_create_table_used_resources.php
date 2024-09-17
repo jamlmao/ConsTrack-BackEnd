@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('resource_id');
             $table->string('used_resource_name');
-            $table->string('resource_qty');
+            $table->integer('resource_qty');
             $table->timestamps();
 
 

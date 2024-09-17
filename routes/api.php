@@ -7,6 +7,8 @@ use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ResourcesController;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -36,6 +38,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+ 
     Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
 
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
@@ -109,4 +112,11 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
 
 
+
+    Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
+    Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
+    Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
+    Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']);
+    Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']);
+    Route::post('tasks/{task_id}/use-resources', [ResourcesController::class, 'useResourcesForWeek']);
 });

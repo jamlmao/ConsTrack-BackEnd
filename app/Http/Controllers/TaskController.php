@@ -512,6 +512,34 @@ class TaskController extends Controller
         }
     }
 
+    public function getTasksByCategoryId($category_id)
+    {
+        try {
+            // Fetch all tasks associated with the given category ID
+            $tasks = Task::where('category_id', $category_id)->get();
+
+            // Check if tasks are found
+            if ($tasks->isEmpty()) {
+                return response()->json(['message' => 'No tasks found for this category'], 404);
+            }
+
+            // Format the dates and return the tasks
+            $tasks = $tasks->map(function ($task) {
+                $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
+                $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
+                return $task;
+            });
+
+            return response()->json([
+                'tasks' => $tasks
+            ], 200);
+        } catch (Exception $e) {
+            Log::error('Error fetching tasks: ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching tasks'], 500);
+        }
+    }
+
+
 
 
 }

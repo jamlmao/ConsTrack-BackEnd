@@ -15,6 +15,7 @@ class Resources extends Model
         'qty',
         'unit_cost',
         'total_cost',
+        'total_used_resources',
     ];
 
     public function projectTask()

@@ -11,7 +11,8 @@ class UsedResources extends Model
     protected $fillable = [
         'resource_id',
         'used_resource_name',
-        'resource_qty'
+        'resource_qty',
+        'total_used_resources',
     ];
 
     public function resources()
