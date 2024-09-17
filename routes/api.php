@@ -85,6 +85,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     
     Route::get('/total', [PController::class, 'getTotalTaskCost']);
     Route::get('/projectsPM', [PController::class, 'getProjectsPerMonth']);
+    
+    Route::get('/projectsY', [PController::class, 'getProjectPerYear']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
     Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 

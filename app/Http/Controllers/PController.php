@@ -834,13 +834,6 @@ class PController extends Controller
 
 
 
-   //for generating SOWA // need to make the generateProjectsPdf method in the same controller
-    public function downloadProjectsPdf()
-    {
-        return $this->generateProjectsPdf();
-    }
-
-
 
     public function getProjectDetails($project_id)
     {
@@ -871,7 +864,77 @@ class PController extends Controller
         }
     }
 
-
+    public function getProjectPerYear(){
+        try {
+            // Get the logged-in user
+            $user = Auth::user();
+    
+            // Check if the user is an admin
+            if ($user->role === 'admin') {
+                // Admins can access all projects
+                $projects = DB::table('projects')
+                    ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+                    ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+                    ->select(
+                        DB::raw('YEAR(projects.starting_date) as year'),
+                        DB::raw('MONTH(projects.starting_date) as month'),
+                        DB::raw('SUM(CASE WHEN projects.status = "D" THEN 1 ELSE 0 END) as due'),
+                        DB::raw('SUM(CASE WHEN projects.status = "C" THEN 1 ELSE 0 END) as complete'),
+                        DB::raw('SUM(CASE WHEN projects.status = "OG" THEN 1 ELSE 0 END) as ongoing')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+            } else {
+                // Get the logged-in staff profile
+                $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+    
+                if (!$staffProfile) {
+                    Log::error('Staff profile not found for user_id: ' . $user->id);
+                    return response()->json(['error' => 'Staff profile not found'], 404);
+                }
+    
+                // Non-admin users can only access projects from their own company
+                $companyId = $staffProfile->company_id;
+                Log::info('Fetching projects for company ID: ' . $companyId);
+    
+                $projects = DB::table('projects')
+                    ->join('client_profiles', 'projects.client_id', '=', 'client_profiles.id')
+                    ->where('projects.company_id', $companyId)
+                    ->whereNotNull('projects.starting_date') // Ensure starting_date is not null
+                    ->select(
+                        DB::raw('YEAR(projects.starting_date) as year'),
+                        DB::raw('MONTH(projects.starting_date) as month'),
+                        DB::raw('SUM(CASE WHEN projects.status = "D" THEN 1 ELSE 0 END) as due'),
+                        DB::raw('SUM(CASE WHEN projects.status = "C" THEN 1 ELSE 0 END) as complete'),
+                        DB::raw('SUM(CASE WHEN projects.status = "OG" THEN 1 ELSE 0 END) as ongoing')
+                    )
+                    ->groupBy('year', 'month')
+                    ->orderBy('year', 'asc')
+                    ->orderBy('month', 'asc')
+                    ->get();
+            }
+    
+            // Map month numbers to month names
+            $monthNames = [
+                1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December'
+            ];
+    
+            $projects = $projects->map(function ($project) use ($monthNames) {
+                $project->month = $monthNames[$project->month];
+                return $project;
+            });
+    
+            Log::info('Projects status fetched successfully');
+            return response()->json(['projects_status_per_month' => $projects], 200);
+        } catch (Exception $e) {
+            Log::error('Failed to fetch projects status per month: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch projects status per month', 'message' => $e->getMessage()], 500);
+        }
+    }
 
 
     public function getAllProjectsFilteredByCompanies()
