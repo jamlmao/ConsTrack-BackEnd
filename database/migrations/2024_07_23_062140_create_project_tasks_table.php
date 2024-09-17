@@ -22,6 +22,7 @@ class CreateProjectTasksTable extends Migration
             $table->dateTime('pt_completion_date');
             $table->dateTime('pt_starting_date');
             $table->string('pt_photo_task')->nullable();
+            $table->string('pt_file_task')->nullable();
             $table->integer('pt_allocated_budget');
             $table->string('pt_task_desc')->nullable();
             $table->string('update_img')->nullable(); // Add the new column

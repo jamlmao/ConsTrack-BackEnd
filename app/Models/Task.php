@@ -17,15 +17,26 @@ class Task extends Model
         'pt_completion_date',
         'pt_starting_date',
         'pt_photo_task',
+        'pt_file_task',
         'pt_allocated_budget',
         'pt_task_desc',
         'update_img',
-        'update_file'
+        'update_file',
+        'week1_img',
+        'week2_img',
+        'week3_img',
+        'week4_img',
+        'week5_img',
 
     ];
 
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function resources()
+    {
+        return $this->hasMany(Resources::class, 'task_id');
     }
 }

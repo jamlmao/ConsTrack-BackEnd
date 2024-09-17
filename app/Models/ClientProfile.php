@@ -22,20 +22,29 @@ class ClientProfile extends Model
         'city',
         'country',
         'zipcode',
-        'company_name',
         'phone_number',
+        'company_id',
     ];
 
     // Define the relationship with the User model
     public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, "user_id");
     }
 
     // Define the relationship with the StaffProfile model for the same company name 
     public function staffProfiles()
     {
-        return $this->hasMany(StaffProfile::class, 'company_name', 'company_name');
+        return $this->hasMany(StaffProfile::class, 'company_name', 'company_name', 'staff');
     }
    
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function project()
+    {
+        return $this->hasOne(Project::class, 'client_id', 'id');
+    }
 }

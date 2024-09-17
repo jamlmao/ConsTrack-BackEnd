@@ -28,6 +28,15 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Check if the staff_profiles table exists before dropping the foreign key
+        if (Schema::hasTable('staff_profiles')) {
+            Schema::table('staff_profiles', function (Blueprint $table) {
+                if (Schema::hasColumn('staff_profiles', 'user_id')) {
+                    $table->dropForeign(['user_id']);
+                }
+            });
+        }
+
         Schema::dropIfExists('users');
     }
 };

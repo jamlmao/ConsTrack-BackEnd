@@ -12,7 +12,8 @@ use App\Models\ClientProfile;
 
 class AuthController extends Controller
 {
-    public function register(Request $request){
+    public function register(Request $request)
+    {
         try {
             $validate = Validator::make($request->all(), 
             [
@@ -41,30 +42,14 @@ class AuthController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => 'client' // Default role set to client
+                'role' => 'client', // Default role set to client
+                'status' => 'Deactivated' // not active or still not use 
             ]);
 
-            // Create token with expiration
-            $tokenResult = $user->createToken("TOKEN");
-            if ($tokenResult && $tokenResult->accessToken) {
-                $token = $tokenResult->plainTextToken;
-                $tokenResult->accessToken->expires_at = now()->addHours(1); // Set token to expire in 1 hour
-                $tokenResult->accessToken->save();
-
-                return response()->json([
-                    'status' => true,
-                    'message' => 'User created successfully',
-                    'token' => $token,
-                    'expires_at' => $tokenResult->accessToken->expires_at
-                ], 200);
-            } else {
-                // Log the error for debugging
-                Log::error('Token creation failed for user: ' . $user->id);
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Token creation failed'
-                ], 500);
-            }
+            return response()->json([
+                'status' => true,
+                'message' => 'User created successfully',
+            ], 201);
         } catch (\Throwable $th) {
             return response()->json([
                 'status' => false,
@@ -76,11 +61,14 @@ class AuthController extends Controller
     public function login(Request $request){
         try {
             $attrs = $request->validate([
-                'email' => 'required|email',
+                'username' => 'required|string', // This can be either email or username
                 'password' => 'required|string',
             ]);
     
-            if (Auth::attempt(['email' => $attrs['email'], 'password' => $attrs['password']])) {
+            // Attempt to log in with email or username
+            if (Auth::attempt(['email' => $attrs['username'], 'password' => $attrs['password']]) ||
+                Auth::attempt(['name' => $attrs['username'], 'password' => $attrs['password']])) {
+                
                 $user = Auth::user();
                 $tokenResult = $user->createToken("AdminToken");
                 $token = $tokenResult->plainTextToken;
@@ -90,7 +78,7 @@ class AuthController extends Controller
                 $tokenResult->accessToken->save();
     
                 $role = $user->role; // Get the role of the user
-    
+                
                 // Initialize profile ID
                 $profileId = null;
     
@@ -106,17 +94,20 @@ class AuthController extends Controller
                         $profileId = $clientProfile->id;
                     }
                 }
-    
+
+                $user->status = 'Active';
+                $user->save();
                 return response()->json([
+                    'status' => true,
                     'message' => 'Login successful',
-                    'role' => $role,
                     'token' => $token,
+                    'role' => $role,
                     'profile_id' => $profileId,
                 ], 200);
             } else {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Invalid credentials'
+                    'message' => 'Invalid login credentials'
                 ], 401);
             }
         } catch (\Throwable $th) {
@@ -127,12 +118,18 @@ class AuthController extends Controller
         }
     }
 
+
     public function logout(Request $request)
     {
         try {
             // Revoke the token that was used to authenticate the current request
             $request->user()->currentAccessToken()->delete();
 
+            $user = $request->user();
+            $user->status = 'Not Active';
+            $user->save();
+
+            
             return response()->json([
                 'message' => 'Logout successful',
             ], 200);

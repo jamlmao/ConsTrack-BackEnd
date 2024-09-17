@@ -14,28 +14,48 @@ class Project extends Model
 
     // Specify the fillable fields
     protected $fillable = [
-        'site_location',
+        'site_address',
+        'site_city',
+        'site_province',
+        'project_name',
         'client_id',
+        'staff_id',
         'status',
         'updated_at',
         'completion_date',
-        'staff_id',
+        'company_id',
         'starting_date',
         'totalBudget',
         'pj_image',
-        'pj_pdf'
+        'pj_pdf',
+        'total_used_budget',
     ];
 
       // Define the relationship with the Client model
       public function client()
       {
-          return $this->belongsTo(ClientProfile::class);
+          return $this->belongsTo(ClientProfile::class, 'client_id');
+      }
+  
+      public function staff()
+      {
+          return $this->belongsTo(StaffProfile::class, 'staff_id');
+      }
+  
+      public function company()
+      {
+          return $this->belongsTo(Company::class, 'company_id');
       }
 
-      public function staffProfile()
-    {
-        return $this->belongsTo(StaffProfile::class, 'staff_id');
-    }
+      public function staffUser()
+      {
+          return $this->belongsTo(User::class, 'staff_id');
+      }
+  
+      public function clientUser()
+      {
+          return $this->belongsTo(User::class, 'client_id');
+      }
 
 }
 

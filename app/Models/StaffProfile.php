@@ -21,8 +21,10 @@ class StaffProfile extends Model
         'city',
         'country',
         'zipcode',
-        'company_name',
         'phone_number',
+        'company_id',
+        'extension_name',
+        'license_number',
     ];
 
     // Define the relationship with the User model
@@ -31,6 +33,10 @@ class StaffProfile extends Model
         return $this->belongsTo(User::class);
     }
 
-  
+      // Define the relationship with Company
+      public function company()
+      {
+          return $this->belongsTo(Company::class);
+      }
 
 }
