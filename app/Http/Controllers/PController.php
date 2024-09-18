@@ -838,6 +838,96 @@ class PController extends Controller
         }
 
 
+
+        public function getSortedProjectTasks2($project_id)
+        {
+            try {
+                // Fetch all tasks related to the given project ID
+                $tasks = Task::where('project_id', $project_id)->get();
+        
+                // Fetch all categories related to the tasks, including the c_allocated_budget
+                $categories = Category::whereIn('id', $tasks->pluck('category_id'))->get()->keyBy('id');
+        
+                // Get unique category names from the tasks
+                $customOrder = $categories->pluck('category_name')->toArray();
+        
+                // Sort the tasks based on the custom order
+                $sortedTasks = $tasks->sort(function ($a, $b) use ($categories) {
+                    $posA = array_search($categories[$a->category_id]->category_name, $categories->pluck('category_name')->toArray());
+                    $posB = array_search($categories[$b->category_id]->category_name, $categories->pluck('category_name')->toArray());
+        
+                    return $posA - $posB;
+                });
+        
+                // Calculate the total allocated budget per category
+                $totalAllocatedBudgetPerCategory = [];
+                $totalBudget = $tasks->sum('pt_allocated_budget');
+        
+                foreach ($customOrder as $categoryName) {
+                    $category = $categories->firstWhere('category_name', $categoryName);
+                    $categoryId = $category->id;
+                    $categoryTasks = $tasks->where('category_id', $categoryId);
+                    $categoryBudget = $categoryTasks->sum('pt_allocated_budget');
+        
+                    // Fetch the c_allocated_budget from the Category model
+                    $categoryAllocatedBudget = $category->c_allocated_budget;
+        
+                    // Calculate the percentage value of the category based on c_allocated_budget
+                    $categoryPercentage = $categoryAllocatedBudget > 0 ? ($categoryBudget / $categoryAllocatedBudget) * 100 : 0;
+        
+                    // Calculate the percentage for each task based on the status and budget
+                    $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($categoryAllocatedBudget, $totalBudget) {
+                        $taskBudgetPercentage = $totalBudget > 0 ? ($task->pt_allocated_budget / $totalBudget) * 100 : 0;
+        
+                        // If there is no allocated budget, set the percentage to zero
+                        if ($categoryAllocatedBudget == 0) {
+                            $taskBudgetPercentage = 0;
+                        }
+        
+                        $task->percentage = $taskBudgetPercentage;
+        
+                        // Fetch resources for the task from the used_resources table and join with resources table
+                        $taskResources = DB::table('used_resources')
+                            ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
+                            ->where('resources.task_id', $task->id)
+                            ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'used_resources.created_at']);
+        
+                        $task->resources = $taskResources->map(function ($resource) {
+                            return [
+                                'id' => $resource->resource_id,
+                                'name' => $resource->resource_name,
+                                'total_used_resources' => $resource->total_used_resources,
+                                'qty' => $resource->resource_qty,
+                                'used_date' => $resource->created_at
+                            ];
+                        });
+        
+                        return $task;
+                    });
+        
+                    $totalUsedResources = $categoryTasksWithPercentage->reduce(function ($carry, $task) {
+                        return $carry + $task->resources->sum('total_used_resources');
+                    }, 0);
+        
+                    $totalAllocatedBudgetPerCategory[$categoryName] = [
+                        'c_allocated_budget' => $categoryAllocatedBudget,
+                        'tasks' => $categoryTasksWithPercentage->values()->all(),
+                        'totalAllocatedBudget' => $categoryBudget,
+                        'percentage' => $categoryPercentage,
+                        'totalUsedResources' => $totalUsedResources
+                    ];
+                }
+        
+                // Return the sorted tasks and total allocated budget per category in a JSON response
+                return response()->json([
+                    'Category' => $totalAllocatedBudgetPerCategory
+                ], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+            }
+        }
+
         public function getProjectTasksGroupedByMonth($project_id)
         {
             try {

@@ -48,6 +48,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
     Route::get('/projectD/{project_id}', [PController::class, 'getProjectDetails']);
     Route::get('/sortedTask/{project_id}', [PController::class, 'getSortedProjectTasks']);
+    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
+
+    
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);

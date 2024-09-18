@@ -99,4 +99,8 @@ class ResourcesController extends Controller
             return response()->json(['message' => 'Failed to update resources', 'error' => $e->getMessage()], 500);
         }
     }
+
+
+
+    
 }
