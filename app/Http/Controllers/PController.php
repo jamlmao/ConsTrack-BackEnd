@@ -394,6 +394,7 @@ class PController extends Controller
             public function addTask(Request $request, $project_id)
             {
                 try {
+                    
                     // Validate the incoming request for task
                     $validatedData = $request->validate([
                         'pt_task_name' => 'required|string',
@@ -405,6 +406,7 @@ class PController extends Controller
                         'resources.*.resource_name' => 'required|string',
                         'resources.*.qty' => 'required|integer',
                         'resources.*.unit_cost' => 'required|numeric',
+                      
                     ]);
                     
                     // Add the project_id to the validated data
@@ -566,7 +568,6 @@ class PController extends Controller
 
 
 
-
         public function addTaskv2(Request $request, $project_id)
         {
             try {
@@ -587,9 +588,10 @@ class PController extends Controller
                 // Add the project_id to the validated data
                 $validatedData['project_id'] = $project_id;
         
-                // Fetch the project's total budget
+                // Fetch the project's total budget and c_allocated_budget
                 $project = Project::findOrFail($project_id);
                 $totalBudget = $project->totalBudget;
+                $cAllocatedBudget = $project->c_allocated_budget;
         
                 $staffProfile = StaffProfile::findOrFail($project->staff_id);
                 $clientProfile = ClientProfile::findOrFail($project->client_id);
@@ -612,6 +614,11 @@ class PController extends Controller
                 // Check if adding the new task's budget exceeds the total budget
                 if ($totalAllocatedBudget + $totalResourceCost > $totalBudget) {
                     return response()->json(['message' => 'Cannot add task: allocated budget exceeds the total project budget'], 400);
+                }
+        
+                // Check if adding the new task's budget exceeds the c_allocated_budget
+                if ($totalAllocatedBudget + $totalResourceCost > $cAllocatedBudget) {
+                    return response()->json(['message' => 'Cannot add task: allocated budget exceeds the c_allocated_budget'], 400);
                 }
         
                 // Check if the completion date has passed
@@ -674,6 +681,7 @@ class PController extends Controller
                 foreach ($resources as $resource) {
                     $resource['task_id'] = $task->id;
                     $resource['total_cost'] = $resource['qty'] * $resource['unit_cost'];
+                    $resource['total_used_resources'] = 0;
                     Resources::create($resource);
                 }
         
@@ -700,7 +708,6 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
             }
         }
-
 
 
     public function getProjectTaskImages($project_id)
@@ -757,7 +764,7 @@ class PController extends Controller
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)
                 ->with('resources:id,task_id,resource_name,qty,unit_cost,total_cost')
-                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'pt_task_desc', 'update_img', 'week1_img', 'week2_img', 'week3_img', 'week4_img','week5_img','update_file', 'created_at', 'updated_at', 'pt_file_task']);
+                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget','update_img', 'week1_img', 'week2_img', 'week3_img', 'week4_img','week5_img','update_file', 'created_at', 'updated_at', 'pt_file_task']);
         
                 // Calculate the total number of tasks
                 $totalTasks = $tasks->count();
@@ -910,6 +917,7 @@ class PController extends Controller
                     }, 0);
         
                     $totalAllocatedBudgetPerCategory[$categoryName] = [
+                        'category_id' => $categoryId,
                         'c_allocated_budget' => $categoryAllocatedBudget,
                         'tasks' => $categoryTasksWithPercentage->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
@@ -967,43 +975,29 @@ class PController extends Controller
         public function getTasksByCategory($project_id)
         {
             try {
-                // Define the custom order for pt_task_desc
-                $customOrder = [
-                    'GENERAL REQUIREMENTS',
-                    'SITE WORKS',
-                    'CONCRETE & MASONRY WORKS',
-                    'METAL REINFORCEMENT WORKS',
-                    'FORMS & SCAFFOLDINGS',
-                    'STEEL FRAMING WORK',
-                    'TINSMITHRY WORKS',
-                    'PLASTERING WORKS',
-                    'PAINTS WORKS',
-                    'PLUMBING WORKS',
-                    'ELECTRICAL WORKS',
-                    'CEILING WORKS',
-                    'ARCHITECTURAL'
-                ];
-
                 // Fetch the project to get the total budget
                 $project = Project::findOrFail($project_id);
                 $projectTotalBudget = $project->totalBudget;
-
+        
+                // Fetch all categories related to the given project ID
+                $categories = Category::where('project_id', $project_id)->get();
+        
                 // Fetch all tasks related to the given project ID
-                $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'pt_allocated_budget', 'pt_task_desc', 'pt_completion_date']);
-
+                $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'pt_allocated_budget', 'category_id', 'pt_completion_date']);
+        
                 // Initialize the result array
                 $totalAllocatedBudgetPerCategory = [];
-
-                foreach ($customOrder as $category) {
-                    $categoryTasks = $tasks->where('pt_task_desc', $category);
+        
+                foreach ($categories as $category) {
+                    $categoryTasks = $tasks->where('category_id', $category->id);
                     $categoryBudget = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
-
+        
                     // Calculate previous cost, this period cost, and to date cost
                     $previousCost = $categoryTasks->where('pt_completion_date', '<', Carbon::today())->sum('pt_allocated_budget');
                     $thisPeriodCost = $categoryTasks->where('pt_completion_date', '=', Carbon::today())->sum('pt_allocated_budget');
                     $toDateCost = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
-
-                    $totalAllocatedBudgetPerCategory[$category] = [
+        
+                    $totalAllocatedBudgetPerCategory[$category->category_name] = [
                         'tasks' => $categoryTasks->map(function ($task) {
                             return [
                                 'pt_status' => $task->pt_status,
@@ -1017,7 +1011,7 @@ class PController extends Controller
                         'toDateCost' => $toDateCost
                     ];
                 }
-
+        
                 // Return the tasks grouped by category and total allocated budget per category in a JSON response
                 return response()->json([
                     'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
@@ -1252,6 +1246,7 @@ class PController extends Controller
         }
     }
 
+  
     
 
 
@@ -1306,11 +1301,30 @@ class PController extends Controller
                 $photoPath = asset('storage/photos/projects/' . $imageName);
                 $task->$column = $photoPath;
                 Log::info('Image saved successfully: ' . $photoPath);
+    
+                // Return the image name and upload date
+                return [
+                    'image' => $imageName,
+                    'uploaded_at' => Carbon::now()->format('Y-m-d')
+                ];
             };
+    
+            // Initialize response data
+            $responseData = [
+                'message' => 'Task updated successfully',
+                'used_budget' => $project->total_used_budget,
+                'update_img' => null,
+                'week1_img' => $task->week1_img,
+                'week2_img' => $task->week2_img,
+                'week3_img' => $task->week3_img,
+                'week4_img' => $task->week4_img,
+                'week5_img' => $task->week5_img
+            ];
     
             // Handle the update_img field
             if (!empty($request->update_img)) {
-                $saveImage($request->update_img, 'update_img');
+                $imageData = $saveImage($request->update_img, 'update_img');
+                $responseData['update_img'] = $imageData;
     
                 // Update task status to 'C' as it's the final image
                 $task->pt_status = 'C';
@@ -1332,7 +1346,8 @@ class PController extends Controller
                 Log::info('Updated project used budget: ' . $project->total_used_budget);
             } else if (!empty($request->placeholder_image)) {
                 if ($isLastWeek) {
-                    $saveImage($request->placeholder_image, 'update_img');
+                    $imageData = $saveImage($request->placeholder_image, 'update_img');
+                    $responseData['update_img'] = $imageData;
     
                     // Update task status to 'C' as it's the final image
                     $task->pt_status = 'C';
@@ -1354,26 +1369,17 @@ class PController extends Controller
                     Log::info('Updated project used budget: ' . $project->total_used_budget);
                 } else {
                     $imgKey = 'week' . $weekNumber . '_img';
-                    $saveImage($request->placeholder_image, $imgKey);
+                    $imageData = $saveImage($request->placeholder_image, $imgKey);
+                    $responseData[$imgKey] = $imageData;
                 }
             }
     
-            // Save the updated task and project
             $task->save();
             $project->save();
     
             Log::info('Task and project saved successfully');
     
-            return response()->json([
-                'message' => 'Task updated successfully',
-                'used_budget' => $project->total_used_budget,
-                'update_img' => $task->update_img,
-                'week1_img' => $task->week1_img,
-                'week2_img' => $task->week2_img,
-                'week3_img' => $task->week3_img,
-                'week4_img' => $task->week4_img,
-                'week5_img' => $task->week5_img
-            ], 200);
+            return response()->json($responseData, 200);
         } catch (\Exception $e) {
             Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
             return response()->json(['error' => 'An error occurred while updating the task'], 500);

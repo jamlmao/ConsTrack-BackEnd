@@ -22,464 +22,8 @@ use App\Models\ProjectTasks;
 
 class TaskController extends Controller
 {
-    public function getGeneralTasks($projectId)
-    {
-        try {
-            
-            $category = 'GENERAL REQUIREMENTS';
+   
 
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    // Fetch resources for each task
-                    $task->resources = DB::table('resources')
-                        ->where('task_id', $task->id)
-                        ->get();
-                        if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                            $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                            $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                            $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                        }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-              
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getSiteWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'SITE WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ' and project ID ' . $projectId . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getConcreteWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'CONCRETE & MASONRY WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getMetalWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'METAL REINFORCEMENT WORK';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-    public function getFormsAndScaffoldingWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'FORMS & SCAFFOLDINGS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getSteelWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'STEEL FRAMING WORK';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc);
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getTinsWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'TINSMITHRY WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getPlasterWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'PLASTERING WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc);
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getPaintsWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'PAINTS WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getPlumbingWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'PLUMBING WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getElectricalWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'ELECTRICAL WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc); 
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-
-
-    public function getCeilingWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'CEILING WORKS';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc);
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
-
-    public function getArchiWorksTasks($projectId)
-    {
-        try {
-            
-            $category = 'ARCHITECTURAL';
-
-           
-            $tasks = DB::table('project_tasks')
-                ->where('pt_task_desc', $category)
-                ->where('project_id', $projectId)
-                ->get()
-                ->map(function ($task) {
-                    $task->resources = DB::table('resources')
-                    ->where('task_id', $task->id) 
-                    ->get();
-                    if (!empty($task->pt_starting_date || $task->pt_completion_date || $task->pt_updated_at )) {
-                        $task->pt_starting_date = Carbon::parse($task->pt_starting_date)->format('Y-m-d');
-                        $task->pt_completion_date = Carbon::parse($task->pt_completion_date)->format('Y-m-d');
-                        $task->pt_updated_at = Carbon::parse($task->pt_updated_at)->format('Y-m-d');
-                    }
-                    unset($task->pt_task_desc);
-                    return $task;
-                });
-
-            return response()->json([
-                'category' => $category,
-                'tasks' => $tasks
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Error fetching tasks for category ' . $category . ': ' . $e->getMessage());
-            return response()->json(['error' => 'An error occurred while fetching tasks for the category'], 500);
-        }
-    }
 
     public function getAllTasksWithResources()
     {
@@ -512,6 +56,13 @@ class TaskController extends Controller
         }
     }
 
+
+
+
+
+
+
+
     public function getTasksByCategoryId($category_id)
     {
         try {
@@ -539,7 +90,71 @@ class TaskController extends Controller
         }
     }
 
+    
+    public function getImageUploadDate($fileName)
+    {
+        try {
+            // Extract the Unix timestamp part from the file name (first part before the underscore)
+            $timestamp = strtok($fileName, '_');
+            Log::info('Extracted timestamp from file name: ' . $timestamp);
 
+            // Convert the Unix timestamp to 'Y-m-d' format
+            $uploadDate = Carbon::createFromTimestamp($timestamp)->format('Y-m-d');
+            Log::info('Converted upload date: ' . $uploadDate);
 
+            return $uploadDate;
+        } catch (\Exception $e) {
+            Log::error('Error extracting upload date from file name: ' . $fileName . ' - ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    public function getTaskImages($taskId)
+    {
+        try {
+            // Find the task by ID
+            $task = Task::findOrFail($taskId);
+            Log::info('Task found: ' . $taskId);
+
+            // Initialize an array to store images and their upload dates
+            $images = [];
+
+            // List of image columns
+            $imageColumns = [
+                'update_img',
+                'week1_img',
+                'week2_img',
+                'week3_img',
+                'week4_img',
+                'week5_img'
+            ];
+
+            // Iterate over each image column
+            foreach ($imageColumns as $column) {
+                if (!empty($task->$column)) {
+                    // Extract the file name from the URL
+                    $fileName = basename($task->$column);
+
+                    // Extract the upload date from the file name
+                    $uploadDate = $this->getImageUploadDate($fileName);
+
+                    // Add the image and its upload date to the array
+                    $images[] = [
+                        'image' => $task->$column,
+                        'uploaded_at' => $uploadDate
+                    ];
+                }
+            }
+
+            // Return the response with the images and their upload dates
+            return response()->json([
+                'message' => 'Images fetched successfully',
+                'images' => $images
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching images for task ' . $taskId . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching the images'], 500);
+        }
+    }
 
 }
