@@ -90,35 +90,40 @@ class TaskController extends Controller
         }
     }
 
-    
-    public function getImageUploadDate($fileName)
+    private function getImageUploadDate($fileName)
     {
-        try {
-            // Extract the Unix timestamp part from the file name (first part before the underscore)
-            $timestamp = strtok($fileName, '_');
-            Log::info('Extracted timestamp from file name: ' . $timestamp);
+        // Assuming the file name contains the date in a specific format, e.g., 'image_20231001.jpg'
+        Log::info('Processing file name: ' . $fileName);
+        // Extract the date part from the file name
+        if (preg_match('/(\d{4})(\d{2})(\d{2})/', $fileName, $matches)) {
+            // Validate the extracted date parts
+            Log::info('Extracted date parts: ' . json_encode($matches));
 
-            // Convert the Unix timestamp to 'Y-m-d' format
-            $uploadDate = Carbon::createFromTimestamp($timestamp)->format('Y-m-d');
-            Log::info('Converted upload date: ' . $uploadDate);
+            $year = $matches[1];
+            $month = $matches[2];
+            $day = $matches[3];
 
-            return $uploadDate;
-        } catch (\Exception $e) {
-            Log::error('Error extracting upload date from file name: ' . $fileName . ' - ' . $e->getMessage());
-            return null;
+            // Check if the extracted parts form a valid date
+            if (checkdate($month, $day, $year)) {
+                // Format the date as YYYY-MM-DD
+                return $year . '-' . $month . '-' . $day;
+            }
         }
-    }
 
+        // If the date is not found in the file name or is invalid, return null
+        return null;
+    }
+        
     public function getTaskImages($taskId)
     {
         try {
             // Find the task by ID
             $task = Task::findOrFail($taskId);
             Log::info('Task found: ' . $taskId);
-
+    
             // Initialize an array to store images and their upload dates
             $images = [];
-
+    
             // List of image columns
             $imageColumns = [
                 'update_img',
@@ -128,27 +133,28 @@ class TaskController extends Controller
                 'week4_img',
                 'week5_img'
             ];
-
+    
             // Iterate over each image column
             foreach ($imageColumns as $column) {
                 if (!empty($task->$column)) {
                     // Extract the file name from the URL
                     $fileName = basename($task->$column);
-
+    
                     // Extract the upload date from the file name
                     $uploadDate = $this->getImageUploadDate($fileName);
-
-                    // Add the image and its upload date to the array
-                    $images[] = [
-                        'image' => $task->$column,
-                        'uploaded_at' => $uploadDate
-                    ];
+    
+                    // Add the image and its upload date to the response
+                    $images[$column] = $task->$column;
+                    $images[$column . '_uploaded_at'] = $uploadDate;
+                } else {
+                    // Add null for the image and upload date if the column is empty
+                    $images[$column] = null;
+                    $images[$column . '_uploaded_at'] = null;
                 }
             }
-
+    
             // Return the response with the images and their upload dates
             return response()->json([
-                'message' => 'Images fetched successfully',
                 'images' => $images
             ], 200);
         } catch (\Exception $e) {
@@ -157,4 +163,6 @@ class TaskController extends Controller
         }
     }
 
+
+    
 }

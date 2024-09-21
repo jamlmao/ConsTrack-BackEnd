@@ -53,7 +53,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
-  
+    Route::post('/refresh-tables', [PController::class, 'refreshTables']);
     
     
     Route::get('/Alltask', [TaskController::class, 'getAllTasksWithResources']);
@@ -107,8 +107,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
 
     Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
-    Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']);
-    Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']);
+    Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
+    Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details
     Route::post('tasks/{task_id}/use-resources', [ResourcesController::class, 'useResourcesForWeek']);
     Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);

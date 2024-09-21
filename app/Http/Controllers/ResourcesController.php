@@ -33,6 +33,16 @@ class ResourcesController extends Controller
     public function getResourcesByTaskId($task_id)
     {
         try {
+
+            $task = Task::find($task_id);
+
+            if (!$task) {
+                return response()->json(['message' => 'Task not found'], 404);
+            }
+
+            $category = Category::find($task->category_id);
+            $category_name = $category->category_name;
+
             // Fetch all resources associated with the given task ID
             $resources = Resources::where('task_id', $task_id)->get();
 
@@ -42,7 +52,7 @@ class ResourcesController extends Controller
             }
 
             // Return the resources
-            return response()->json(['resources' => $resources], 200);
+            return response()->json(['resources' => $resources, 'tasks'=> $task, 'category_name' => $category_name,], 200);
         } catch (Exception $e) {
             // Log the error and return a 500 response
             Log::error('Failed to fetch resources: ' . $e->getMessage());
