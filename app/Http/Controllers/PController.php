@@ -952,7 +952,7 @@ class PController extends Controller
         }
 
 
-
+ 
         public function getSortedProjectTasks2($project_id)
         {
             try {
@@ -977,6 +977,10 @@ class PController extends Controller
                 $totalAllocatedBudgetPerCategory = [];
                 $totalBudget = $tasks->sum('pt_allocated_budget');
         
+                // Define the current period (e.g., today)
+                $todayStart = now()->startOfDay();
+                $todayEnd = now()->endOfDay();
+        
                 foreach ($customOrder as $categoryName) {
                     $category = $categories->firstWhere('category_name', $categoryName);
                     $categoryId = $category->id;
@@ -988,6 +992,11 @@ class PController extends Controller
         
                     // Calculate the percentage value of the category based on c_allocated_budget
                     $categoryPercentage = $categoryAllocatedBudget > 0 ? ($categoryBudget / $categoryAllocatedBudget) * 100 : 0;
+        
+                    // Initialize budget trackers
+                    $previousBudget = 0;
+                    $thisPeriodBudget = 0;
+                    $toDateBudget = 0;
         
                     // Calculate the percentage for each task based on the status and budget
                     $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($categoryAllocatedBudget, $totalBudget) {
@@ -1029,6 +1038,17 @@ class PController extends Controller
                         return $task->pt_status === 'C';
                     });
         
+                    // Calculate budgets based on task completion dates
+                    foreach ($completedTasks as $task) {
+                        $completionDate = $task->updated_at;
+                        if ($completionDate < $todayStart) {
+                            $previousBudget += $task->pt_allocated_budget;
+                        } elseif ($completionDate >= $todayStart && $completionDate <= $todayEnd) {
+                            $thisPeriodBudget += $task->pt_allocated_budget;
+                        }
+                        $toDateBudget += $task->pt_allocated_budget;
+                    }
+        
                     $categoryPercentage = $completedTasks->isEmpty() ? 0 : $completedTasks->sum('pt_allocated_budget') / $categoryAllocatedBudget * 100;
         
                     $totalAllocatedBudgetPerCategory[$categoryName] = [
@@ -1037,7 +1057,10 @@ class PController extends Controller
                         'tasks' => $categoryTasksWithPercentage->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
                         'progress' => $categoryPercentage,
-                        'totalUsedResources' => $totalUsedResources
+                        'totalUsedResources' => $totalUsedResources,
+                        'todate' => $toDateBudget,
+                        'previous' => $previousBudget,
+                        'thisperiod' => $thisPeriodBudget
                     ];
                 }
         
