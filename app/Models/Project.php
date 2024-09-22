@@ -29,6 +29,7 @@ class Project extends Model
         'pj_image',
         'pj_pdf',
         'total_used_budget',
+        'project_type'
     ];
 
       // Define the relationship with the Client model

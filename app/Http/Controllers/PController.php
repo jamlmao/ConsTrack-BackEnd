@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\ClientProfile;
 use App\Models\StaffProfile;
 use App\Models\ProjectLogs;
+use App\Models\UsedResources;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,6 +23,7 @@ use Carbon\Carbon;
 use Intervention\Image\Facades\Image;
 use App\Models\Company;
 use App\Models\Resources;
+use App\Models\Category;
 use DateTime;
 
 class PController extends Controller
@@ -48,6 +50,7 @@ class PController extends Controller
                 'site_city' => 'required|string',
                 'site_province' => 'required|string',
                 'project_name'=>'required|string',
+                'project_type' => 'required|string',
                 'client_id' => 'required|integer|exists:client_profiles,id',
                 'completion_date' => 'required|date',
                 'starting_date' => 'required|date',
@@ -392,6 +395,7 @@ class PController extends Controller
             public function addTask(Request $request, $project_id)
             {
                 try {
+                    
                     // Validate the incoming request for task
                     $validatedData = $request->validate([
                         'pt_task_name' => 'required|string',
@@ -399,11 +403,11 @@ class PController extends Controller
                         'pt_starting_date' => 'required|date',
                         'pt_photo_task' => 'nullable|string', // Base64 encoded image
                         'pt_file_task' => 'nullable|string',
-                        'pt_task_desc' => 'required|string', // Should be dropdown
                         'resources' => 'required|array',
                         'resources.*.resource_name' => 'required|string',
                         'resources.*.qty' => 'required|integer',
                         'resources.*.unit_cost' => 'required|numeric',
+                      
                     ]);
                     
                     // Add the project_id to the validated data
@@ -526,6 +530,203 @@ class PController extends Controller
             }
         }
 
+
+
+
+        public function addCategory(Request $request, $project_id)
+        {
+            try {
+                // Validate the incoming request for category
+                $validatedData = $request->validate([
+                    'category_name' => 'required|string',
+                    'category_allocated_budget' => 'required|integer',
+                ]);
+        
+                // Find the project by ID
+                $project = Project::find($project_id);
+        
+                if (!$project) {
+             
+                    return response()->json(['message' => 'Project not found'], 404);
+                }
+        
+                // Add the new category to the project
+                $category = new Category();
+                $category->category_name = $validatedData['category_name'];
+                $category->c_allocated_budget = $validatedData['category_allocated_budget'];
+                $category->project_id = $project->id; // Set the project_id
+        
+                // Save the category
+                $category->save();
+        
+                // Return a success response
+                return response()->json(['message' => 'Category added successfully', 'category' => $category], 201);
+            } catch (\Exception $e) {
+              
+                return response()->json(['message' => 'Failed to add category', 'error' => $e->getMessage()], 500);
+            }
+        }
+
+
+
+      
+        public function addTaskv2(Request $request, $project_id)
+        {
+            try {
+                // Validate the incoming request for task
+                $validatedData = $request->validate([
+                    'pt_task_name' => 'required|string',
+                    'pt_completion_date' => 'required|date',
+                    'pt_starting_date' => 'required|date',
+                    'pt_photo_task' => 'nullable|string', // Base64 encoded image
+                    'pt_file_task' => 'nullable|string',
+                    'resources' => 'required|array',
+                    'resources.*.resource_name' => 'required|string',
+                    'resources.*.qty' => 'required|integer',
+                    'resources.*.unit_cost' => 'required|numeric',
+                    'category_id' => 'required|exists:categories,id', // Validate category_id
+                ]);
+
+                // Add the project_id to the validated data
+                $validatedData['project_id'] = $project_id;
+
+                // Fetch the project's total budget and c_allocated_budget
+                $project = Project::findOrFail($project_id);
+                $totalBudget = $project->totalBudget;
+                $cAllocatedBudget = $project->c_allocated_budget;
+
+                $staffProfile = StaffProfile::findOrFail($project->staff_id);
+                $clientProfile = ClientProfile::findOrFail($project->client_id);
+
+                // Get the user IDs from the profiles
+                $staffUserId = $staffProfile->user_id;
+                $clientUserId = $clientProfile->user_id;
+
+                // Calculate the total allocated budget of all existing tasks
+                $totalAllocatedBudget = Task::where('project_id', $project_id)->sum('pt_allocated_budget');
+
+                // Check if the total budget and total allocated budget are equal
+                if ($totalBudget == $totalAllocatedBudget) {
+                    return response()->json(['message' => 'Cannot add task: total budget and total allocated budget are equal'], 400);
+                }
+
+                // Calculate the total resource cost
+                $resources = $validatedData['resources'];
+                $totalResourceCost = 0;
+
+                foreach ($resources as $resource) {
+                    $totalResourceCost += $resource['qty'] * $resource['unit_cost'];
+                }
+
+                // Check if adding the new task's budget exceeds the total budget
+                if ($totalAllocatedBudget + $totalResourceCost > $totalBudget) {
+                    return response()->json(['message' => 'Cannot add task: allocated budget exceeds the total project budget'], 400);
+                }
+
+                $category = Category::findOrFail($validatedData['category_id']);
+                $cAllocatedBudget = $category->c_allocated_budget;
+
+
+
+                $totalCategoryAllocatedBudget = Task::where('category_id', $validatedData['category_id'])->sum('pt_allocated_budget');
+
+
+                Log::info('Category Allocated Budget: ' . $cAllocatedBudget);
+                Log::info('Total Category Allocated Budget: ' . $totalCategoryAllocatedBudget);
+                
+                if ($totalCategoryAllocatedBudget + $totalResourceCost > $cAllocatedBudget) {
+                    return response()->json(['message' => 'Cannot add task: allocated budget exceeds the category allocated budget'], 400);
+                }
+        
+
+                // Check if the completion date has passed
+                $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+                $currentDate = Carbon::now();
+
+                if ($completionDate->isPast()) {
+                    $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+                } else {
+                    $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                }
+
+                // Decode the base64 encoded photo, if present
+                if (!empty($validatedData['pt_photo_task'])) {
+                    $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
+                    if ($decodedImage === false) {
+                        Log::error('Invalid base64 image');
+                        return response()->json(['message' => 'Invalid base64 image'], 400);
+                    }
+                    // Save the decoded image to a file or storage
+                    $imageName = time() . '.webp';
+                    $isSaved = Storage::disk('public')->put('photos/tasks/' . $imageName, $decodedImage);
+
+                    if (!$isSaved) {
+                        Log::error('Failed to save image');
+                        return response()->json(['message' => 'Failed to save image'], 500);
+                    }
+
+                    $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+                    $validatedData['pt_photo_task'] = $photoPath;
+                }
+
+                // Decode the base64 encoded PDF, if present
+                if (!empty($validatedData['pt_file_task'])) {
+                    $decodedPdf = base64_decode($validatedData['pt_file_task'], true);
+                    if ($decodedPdf === false) {
+                        Log::error('Invalid base64 PDF');
+                        return response()->json(['message' => 'Invalid base64 PDF'], 400);
+                    }
+
+                    $pdfName = time() . '.pdf';
+                    $isSaved = Storage::disk('public')->put('pdfs/tasks/' . $pdfName, $decodedPdf);
+
+                    if (!$isSaved) {
+                        Log::error('Failed to save PDF');
+                        return response()->json(['message' => 'Failed to save PDF'], 500);
+                    }
+
+                    $pdfPath = asset('storage/pdfs/tasks/' . $pdfName); // Set the PDF path
+                    $validatedData['pt_file_task'] = $pdfPath;
+                }
+
+                // Create a new task with the validated data and calculated allocated budget
+                $taskData = array_merge($validatedData, ['pt_allocated_budget' => $totalResourceCost]);
+                $task = Task::create($taskData);
+                $task->photo_path = $validatedData['pt_photo_task'] ?? null;
+                $task->pdf_path = $validatedData['pt_file_task'] ?? null;
+
+                // Add resources to the database
+                foreach ($resources as $resource) {
+                    $resource['task_id'] = $task->id;
+                    $resource['total_cost'] = $resource['qty'] * $resource['unit_cost'];
+                    $resource['total_used_resources'] = 0;
+                    Resources::create($resource);
+                }
+
+                // Fetch the staff and client emails from the users table
+                $staffUser = User::findOrFail($staffUserId);
+                $clientUser = User::findOrFail($clientUserId);
+                $staffEmail = $staffUser->email;
+                $clientEmail = $clientUser->email;
+                Log::info('Client email: ' . $clientEmail); 
+                Log::info('Staff email: ' . $staffEmail);
+
+                if ($validatedData['pt_status'] == 'D') {
+                    Mail::to($clientEmail)->send(new TaskDue($task));
+                }
+
+                // Check if the task is due tomorrow
+                if ($completionDate->isTomorrow()) {
+                    Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
+                }
+
+                return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);
+            } catch (Exception $e) {
+                Log::error('Failed to add task: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
+            }
+        }
+
     public function getProjectTaskImages($project_id)
         {
             try {
@@ -579,8 +780,8 @@ class PController extends Controller
             try {
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)
-                ->with('resources:id,task_id,resource_name,qty,unit_cost,total_cost')
-                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'pt_task_desc', 'update_img', 'week1_img', 'week2_img', 'week3_img', 'week4_img','week5_img','update_file', 'created_at', 'updated_at', 'pt_file_task']);
+                ->with('resources:id,task_id,resource_name,qty,unit_cost,total_cost', 'category:id,category_name')
+                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget','update_img', 'week1_img', 'week2_img', 'week3_img', 'week4_img','week5_img','update_file', 'created_at', 'updated_at', 'pt_file_task','category_id']);
         
                 // Calculate the total number of tasks
                 $totalTasks = $tasks->count();
@@ -661,6 +862,105 @@ class PController extends Controller
         }
 
 
+
+        public function getSortedProjectTasks2($project_id)
+        {
+            try {
+                // Fetch all categories related to the project
+                $categories = Category::where('project_id', $project_id)->get()->keyBy('id');
+        
+                // Fetch all tasks related to the given project ID
+                $tasks = Task::where('project_id', $project_id)->get();
+        
+                // Get unique category names from the categories
+                $customOrder = $categories->pluck('category_name')->toArray();
+        
+                // Sort the tasks based on the custom order
+                $sortedTasks = $tasks->sort(function ($a, $b) use ($categories) {
+                    $posA = array_search($categories[$a->category_id]->category_name, $categories->pluck('category_name')->toArray());
+                    $posB = array_search($categories[$b->category_id]->category_name, $categories->pluck('category_name')->toArray());
+        
+                    return $posA - $posB;
+                });
+        
+                // Calculate the total allocated budget per category
+                $totalAllocatedBudgetPerCategory = [];
+                $totalBudget = $tasks->sum('pt_allocated_budget');
+        
+                foreach ($customOrder as $categoryName) {
+                    $category = $categories->firstWhere('category_name', $categoryName);
+                    $categoryId = $category->id;
+                    $categoryTasks = $tasks->where('category_id', $categoryId);
+                    $categoryBudget = $categoryTasks->sum('pt_allocated_budget');
+        
+                    // Fetch the c_allocated_budget from the Category model
+                    $categoryAllocatedBudget = $category->c_allocated_budget;
+        
+                    // Calculate the percentage value of the category based on c_allocated_budget
+                    $categoryPercentage = $categoryAllocatedBudget > 0 ? ($categoryBudget / $categoryAllocatedBudget) * 100 : 0;
+        
+                    // Calculate the percentage for each task based on the status and budget
+                    $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($categoryAllocatedBudget, $totalBudget) {
+                        // Fetch resources for the task from the used_resources table and join with resources table
+                        $taskResources = DB::table('used_resources')
+                            ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
+                            ->where('resources.task_id', $task->id)
+                            ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'used_resources.created_at']);
+        
+                        $task->resources = $taskResources->map(function ($resource) {
+                            return [
+                                'id' => $resource->resource_id,
+                                'name' => $resource->resource_name,
+                                'total_used_resources' => $resource->total_used_resources,
+                                'qty' => $resource->resource_qty,
+                                'used_date' => $resource->created_at
+                            ];
+                        });
+        
+                        // Calculate the total used resources for the task
+                        $totalUsedResources = $task->resources->sum('total_used_resources');
+        
+                        // Calculate the percentage based on total used resources and update_img
+                        if (!empty($task->update_img)) {
+                            $task->percentage = 100;
+                        } else {
+                            $task->percentage = $totalUsedResources > 0 ? ($totalUsedResources / $task->pt_allocated_budget) * 100 : 0;
+                        }
+        
+                        return $task;
+                    });
+        
+                    $totalUsedResources = $categoryTasksWithPercentage->reduce(function ($carry, $task) {
+                        return $carry + $task->resources->sum('total_used_resources');
+                    }, 0);
+        
+                    // Check if there are any completed tasks
+                    $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
+                        return $task->pt_status === 'C';
+                    });
+        
+                    $categoryPercentage = $completedTasks->isEmpty() ? 0 : $completedTasks->sum('pt_allocated_budget') / $categoryAllocatedBudget * 100;
+        
+                    $totalAllocatedBudgetPerCategory[$categoryName] = [
+                        'category_id' => $categoryId,
+                        'c_allocated_budget' => $categoryAllocatedBudget,
+                        'tasks' => $categoryTasksWithPercentage->values()->all(),
+                        'totalAllocatedBudget' => $categoryBudget,
+                        'progress' => $categoryPercentage,
+                        'totalUsedResources' => $totalUsedResources
+                    ];
+                }
+        
+                // Return the sorted tasks and total allocated budget per category in a JSON response
+                return response()->json([
+                    'Category' => $totalAllocatedBudgetPerCategory
+                ], 200);
+            } catch (Exception $e) {
+                Log::error('Failed to fetch and sort project tasks: ' . $e->getMessage());
+                return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
+            }
+        }
+        
         public function getProjectTasksGroupedByMonth($project_id)
         {
             try {
@@ -700,43 +1000,29 @@ class PController extends Controller
         public function getTasksByCategory($project_id)
         {
             try {
-                // Define the custom order for pt_task_desc
-                $customOrder = [
-                    'GENERAL REQUIREMENTS',
-                    'SITE WORKS',
-                    'CONCRETE & MASONRY WORKS',
-                    'METAL REINFORCEMENT WORKS',
-                    'FORMS & SCAFFOLDINGS',
-                    'STEEL FRAMING WORK',
-                    'TINSMITHRY WORKS',
-                    'PLASTERING WORKS',
-                    'PAINTS WORKS',
-                    'PLUMBING WORKS',
-                    'ELECTRICAL WORKS',
-                    'CEILING WORKS',
-                    'ARCHITECTURAL'
-                ];
-
                 // Fetch the project to get the total budget
                 $project = Project::findOrFail($project_id);
                 $projectTotalBudget = $project->totalBudget;
-
+        
+                // Fetch all categories related to the given project ID
+                $categories = Category::where('project_id', $project_id)->get();
+        
                 // Fetch all tasks related to the given project ID
-                $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'pt_allocated_budget', 'pt_task_desc', 'pt_completion_date']);
-
+                $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'pt_allocated_budget', 'category_id', 'pt_completion_date']);
+        
                 // Initialize the result array
                 $totalAllocatedBudgetPerCategory = [];
-
-                foreach ($customOrder as $category) {
-                    $categoryTasks = $tasks->where('pt_task_desc', $category);
+        
+                foreach ($categories as $category) {
+                    $categoryTasks = $tasks->where('category_id', $category->id);
                     $categoryBudget = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
-
+        
                     // Calculate previous cost, this period cost, and to date cost
                     $previousCost = $categoryTasks->where('pt_completion_date', '<', Carbon::today())->sum('pt_allocated_budget');
                     $thisPeriodCost = $categoryTasks->where('pt_completion_date', '=', Carbon::today())->sum('pt_allocated_budget');
                     $toDateCost = $categoryTasks->where('pt_status', 'C')->sum('pt_allocated_budget');
-
-                    $totalAllocatedBudgetPerCategory[$category] = [
+        
+                    $totalAllocatedBudgetPerCategory[$category->category_name] = [
                         'tasks' => $categoryTasks->map(function ($task) {
                             return [
                                 'pt_status' => $task->pt_status,
@@ -750,7 +1036,7 @@ class PController extends Controller
                         'toDateCost' => $toDateCost
                     ];
                 }
-
+        
                 // Return the tasks grouped by category and total allocated budget per category in a JSON response
                 return response()->json([
                     'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
@@ -985,6 +1271,7 @@ class PController extends Controller
         }
     }
 
+  
     
 
 
@@ -992,7 +1279,10 @@ class PController extends Controller
     {
         $request->validate([
             'placeholder_image' => 'nullable|string',
-            'update_img' => 'nullable|string'
+            'update_img' => 'nullable|string',
+            'resources' => 'required|array',
+            'resources.*.resource_id' => 'required|integer|exists:resources,id',
+            'resources.*.used_qty' => 'required|integer|min:1',
         ]);
     
         try {
@@ -1027,8 +1317,9 @@ class PController extends Controller
                     Log::error('Invalid base64 image for ' . $column);
                     return response()->json(['message' => 'Invalid base64 image'], 400);
                 }
+                $uniqueId = uniqid();
     
-                $imageName = time() . '_' . $column . '.webp';
+                $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '_' . $column . '.webp';
                 $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
     
                 if (!$isSaved) {
@@ -1039,11 +1330,30 @@ class PController extends Controller
                 $photoPath = asset('storage/photos/projects/' . $imageName);
                 $task->$column = $photoPath;
                 Log::info('Image saved successfully: ' . $photoPath);
+    
+                // Return the image name and upload date
+                return [
+                    'image' => $imageName,
+                    'uploaded_at' => Carbon::now()->format('Y-m-d')
+                ];
             };
+    
+            // Initialize response data
+            $responseData = [
+                'message' => 'Task updated successfully',
+                'used_budget' => $project->total_used_budget,
+                'update_img' => null,
+                'week1_img' => $task->week1_img,
+                'week2_img' => $task->week2_img,
+                'week3_img' => $task->week3_img,
+                'week4_img' => $task->week4_img,
+                'week5_img' => $task->week5_img
+            ];
     
             // Handle the update_img field
             if (!empty($request->update_img)) {
-                $saveImage($request->update_img, 'update_img');
+                $imageData = $saveImage($request->update_img, 'update_img');
+                $responseData['update_img'] = $imageData;
     
                 // Update task status to 'C' as it's the final image
                 $task->pt_status = 'C';
@@ -1065,7 +1375,8 @@ class PController extends Controller
                 Log::info('Updated project used budget: ' . $project->total_used_budget);
             } else if (!empty($request->placeholder_image)) {
                 if ($isLastWeek) {
-                    $saveImage($request->placeholder_image, 'update_img');
+                    $imageData = $saveImage($request->placeholder_image, 'update_img');
+                    $responseData['update_img'] = $imageData;
     
                     // Update task status to 'C' as it's the final image
                     $task->pt_status = 'C';
@@ -1087,26 +1398,63 @@ class PController extends Controller
                     Log::info('Updated project used budget: ' . $project->total_used_budget);
                 } else {
                     $imgKey = 'week' . $weekNumber . '_img';
-                    $saveImage($request->placeholder_image, $imgKey);
+                    $imageData = $saveImage($request->placeholder_image, $imgKey);
+                    $responseData[$imgKey] = $imageData;
                 }
             }
     
-            // Save the updated task and project
+            // Validate the request data for resources
+            $validatedData = $request->validate([
+                'resources' => 'required|array',
+                'resources.*.resource_id' => 'required|integer|exists:resources,id',
+                'resources.*.used_qty' => 'required|integer|min:1',
+            ]);
+    
+            // Fetch resources related to the task
+            $resources = Resources::where('task_id', $taskId)->get();
+    
+            // Check if resources are found
+            if ($resources->isEmpty()) {
+                return response()->json(['message' => 'No resources found for this task'], 404);
+            }
+    
+            // Iterate over the resources and check if the available quantity is sufficient
+            foreach ($validatedData['resources'] as $resourceData) {
+                $resource = $resources->where('id', $resourceData['resource_id'])->first();
+                if ($resource) {
+                    // Check if the total used resources plus the new used quantity exceed the available quantity
+                    if ($resource->total_used_resources + $resourceData['used_qty'] > $resource->qty) {
+                        return response()->json(['message' => 'Insufficient quantity for: ' . $resource->resource_name], 400);
+                    }
+                } else {
+                    return response()->json(['message' => 'Resource ID: ' . ($resourceData['resource_id'] ?? 'Unknown') . ' not found'], 404);
+                }
+            }
+    
+            // Iterate over the resources and update the used quantities
+            foreach ($validatedData['resources'] as $resourceData) {
+                $resource = $resources->where('id', $resourceData['resource_id'])->first();
+                if ($resource) {
+                    // Update the total used resources
+                    $resource->total_used_resources += $resourceData['used_qty'];
+                    $resource->save();
+    
+                    // Insert into used_resources table
+                    UsedResources::create([
+                        'resource_id' => $resource->id,
+                        'used_resource_name' => $resource->resource_name,
+                        'resource_qty' => $resourceData['used_qty'],
+                        'used_at' => now(),
+                    ]);
+                }
+            }
+    
             $task->save();
             $project->save();
     
             Log::info('Task and project saved successfully');
     
-            return response()->json([
-                'message' => 'Task updated successfully',
-                'used_budget' => $project->total_used_budget,
-                'update_img' => $task->update_img,
-                'week1_img' => $task->week1_img,
-                'week2_img' => $task->week2_img,
-                'week3_img' => $task->week3_img,
-                'week4_img' => $task->week4_img,
-                'week5_img' => $task->week5_img
-            ], 200);
+            return response()->json($responseData, 200);
         } catch (\Exception $e) {
             Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
             return response()->json(['error' => 'An error occurred while updating the task'], 500);
@@ -1288,4 +1636,51 @@ class PController extends Controller
         }
     }
 
+
+
+  
+    public function refreshTables()
+    {
+        try {
+            // Start the transaction
+            DB::beginTransaction();
+
+            // Disable foreign key checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+
+            // Refresh used_resources table
+            DB::table('used_resources')->truncate();
+            // Optionally, you can seed the table or perform other operations
+            // DB::table('used_resources')->insert([...]);
+
+            // Refresh resources table
+            DB::table('resources')->truncate();
+            // Optionally, you can seed the table or perform other operations
+            // DB::table('resources')->insert([...]);
+
+            // Refresh project_task table
+            DB::table('project_tasks')->truncate();
+            // Optionally, you can seed the table or perform other operations
+            // DB::table('project_task')->insert([...]);
+
+            // Re-enable foreign key checks
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+
+            // Commit the transaction
+            DB::commit();
+
+            return response()->json(['message' => 'Tables refreshed successfully'], 200);
+        } catch (\Exception $e) {
+            // Rollback the transaction if any operation fails
+            DB::rollBack();
+
+            // Re-enable foreign key checks in case of an error
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+
+            // Log the error
+            Log::error('Failed to refresh tables: ' . $e->getMessage());
+
+            return response()->json(['message' => 'Failed to refresh tables', 'error' => $e->getMessage()], 500);
+        }
+    }
 }
