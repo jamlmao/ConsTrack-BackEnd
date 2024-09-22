@@ -9,6 +9,7 @@ use App\Models\Task;
 use App\Models\ClientProfile;
 use App\Models\StaffProfile;
 use App\Models\ProjectLogs;
+use App\Models\UsedResources;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -866,7 +867,7 @@ class PController extends Controller
         {
             try {
                 // Fetch all categories related to the project
-                $categories = Category::where('project_id',$project_id)->get()->keyBy('id');
+                $categories = Category::where('project_id', $project_id)->get()->keyBy('id');
         
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get();
@@ -933,12 +934,19 @@ class PController extends Controller
                         return $carry + $task->resources->sum('total_used_resources');
                     }, 0);
         
+                    // Check if there are any completed tasks
+                    $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
+                        return $task->pt_status === 'C';
+                    });
+        
+                    $categoryPercentage = $completedTasks->isEmpty() ? 0 : $completedTasks->sum('pt_allocated_budget') / $categoryAllocatedBudget * 100;
+        
                     $totalAllocatedBudgetPerCategory[$categoryName] = [
                         'category_id' => $categoryId,
                         'c_allocated_budget' => $categoryAllocatedBudget,
                         'tasks' => $categoryTasksWithPercentage->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
-                        'percentage' => $categoryPercentage,
+                        'progress' => $categoryPercentage,
                         'totalUsedResources' => $totalUsedResources
                     ];
                 }
@@ -952,7 +960,6 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
-
         
         public function getProjectTasksGroupedByMonth($project_id)
         {
@@ -1272,7 +1279,10 @@ class PController extends Controller
     {
         $request->validate([
             'placeholder_image' => 'nullable|string',
-            'update_img' => 'nullable|string'
+            'update_img' => 'nullable|string',
+            'resources' => 'required|array',
+            'resources.*.resource_id' => 'required|integer|exists:resources,id',
+            'resources.*.used_qty' => 'required|integer|min:1',
         ]);
     
         try {
@@ -1390,6 +1400,52 @@ class PController extends Controller
                     $imgKey = 'week' . $weekNumber . '_img';
                     $imageData = $saveImage($request->placeholder_image, $imgKey);
                     $responseData[$imgKey] = $imageData;
+                }
+            }
+    
+            // Validate the request data for resources
+            $validatedData = $request->validate([
+                'resources' => 'required|array',
+                'resources.*.resource_id' => 'required|integer|exists:resources,id',
+                'resources.*.used_qty' => 'required|integer|min:1',
+            ]);
+    
+            // Fetch resources related to the task
+            $resources = Resources::where('task_id', $taskId)->get();
+    
+            // Check if resources are found
+            if ($resources->isEmpty()) {
+                return response()->json(['message' => 'No resources found for this task'], 404);
+            }
+    
+            // Iterate over the resources and check if the available quantity is sufficient
+            foreach ($validatedData['resources'] as $resourceData) {
+                $resource = $resources->where('id', $resourceData['resource_id'])->first();
+                if ($resource) {
+                    // Check if the total used resources plus the new used quantity exceed the available quantity
+                    if ($resource->total_used_resources + $resourceData['used_qty'] > $resource->qty) {
+                        return response()->json(['message' => 'Insufficient quantity for: ' . $resource->resource_name], 400);
+                    }
+                } else {
+                    return response()->json(['message' => 'Resource ID: ' . ($resourceData['resource_id'] ?? 'Unknown') . ' not found'], 404);
+                }
+            }
+    
+            // Iterate over the resources and update the used quantities
+            foreach ($validatedData['resources'] as $resourceData) {
+                $resource = $resources->where('id', $resourceData['resource_id'])->first();
+                if ($resource) {
+                    // Update the total used resources
+                    $resource->total_used_resources += $resourceData['used_qty'];
+                    $resource->save();
+    
+                    // Insert into used_resources table
+                    UsedResources::create([
+                        'resource_id' => $resource->id,
+                        'used_resource_name' => $resource->resource_name,
+                        'resource_qty' => $resourceData['used_qty'],
+                        'used_at' => now(),
+                    ]);
                 }
             }
     
