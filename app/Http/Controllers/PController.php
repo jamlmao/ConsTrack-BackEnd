@@ -104,6 +104,82 @@ class PController extends Controller
                 $photoPath = asset('storage/photos/projects/' . $imageName);
                 $validatedData['pj_image'] = $photoPath; 
             }
+            // Decode the base64 encoded image
+            if (!empty($validatedData['pj_image1'])) {
+                $decodedImage = base64_decode($validatedData['pj_image1'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image1'] = $photoPath; 
+            }
+            // Decode the base64 encoded image
+            if (!empty($validatedData['pj_image2'])) {
+                $decodedImage = base64_decode($validatedData['pj_image2'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image2'] = $photoPath; 
+            }
+            // Decode the base64 encoded image
+            if (!empty($validatedData['pj_image3'])) {
+                $decodedImage = base64_decode($validatedData['pj_image3'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image3'] = $photoPath; 
+            }
+            // Decode the base64 encoded image
+            if (!empty($validatedData['pj_image4'])) {
+                $decodedImage = base64_decode($validatedData['pj_image4'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image4'] = $photoPath; 
+            }
     
             // Decode the base64 encoded PDF
             if (!empty($validatedData['pj_pdf'])) {
