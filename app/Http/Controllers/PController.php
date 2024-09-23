@@ -1299,6 +1299,7 @@ class PController extends Controller
 
 
 
+
     public function updateTask(Request $request, $taskId)
     {
         $request->validate([
@@ -1310,8 +1311,7 @@ class PController extends Controller
         ]);
 
         try {
-
-            DB::beginTransaction();
+            DB::beginTransaction(); // Start the transaction
 
             // Find the task by ID
             $task = Task::findOrFail($taskId);
@@ -1384,14 +1384,6 @@ class PController extends Controller
 
                 // Update task status to 'C' as it's the final image
                 $task->pt_status = 'C';
-                // Notify the client
-                $clientProfile = ClientProfile::findOrFail($project->client_id);
-                $clientUser = User::findOrFail($clientProfile->user_id);
-                $clientEmail = $clientUser->email;
-                Log::info('Client email: ' . $clientEmail);
-
-                Mail::to($clientEmail)->send(new CompleteTask($task));
-                Log::info('Task status updated to completed for task: ' . $taskId);
 
                 // Update the used budget only if the task is complete
                 if ($project->total_used_budget !== null) {
@@ -1407,14 +1399,6 @@ class PController extends Controller
 
                     // Update task status to 'C' as it's the final image
                     $task->pt_status = 'C';
-                    // Notify the client
-                    $clientProfile = ClientProfile::findOrFail($project->client_id);
-                    $clientUser = User::findOrFail($clientProfile->user_id);
-                    $clientEmail = $clientUser->email;
-                    Log::info('Client email: ' . $clientEmail);
-
-                    Mail::to($clientEmail)->send(new CompleteTask($task));
-                    Log::info('Task status updated to completed for task: ' . $taskId);
 
                     // Update the used budget only if the task is complete
                     if ($project->total_used_budget !== null) {
@@ -1446,8 +1430,18 @@ class PController extends Controller
             }
 
             // Get the staff_id from the logged-in user
-            $staffId = auth()->user()->staff_id;
-            Log::info('Staff ID: ' . $staffId);
+            $user = auth()->user();
+            $userId = $user->id;
+            Log::info('Logged-in user user_id: ' . $userId);
+
+            // Retrieve the staff_id from the StaffProfile model using the user_id
+            $staffProfile = StaffProfile::where('user_id', $userId)->first();
+            if (!$staffProfile) {
+                return response()->json(['message' => 'Staff profile not found for the logged-in user'], 404);
+            }
+
+            $staffId = $staffProfile->id;
+            Log::info('Logged-in user staff_id: ' . $staffId);
 
             // Iterate over the resources and check if the available quantity is sufficient
             foreach ($validatedData['resources'] as $resourceData) {
@@ -1475,19 +1469,32 @@ class PController extends Controller
                         'resource_id' => $resource->id,
                         'used_resource_name' => $resource->resource_name,
                         'resource_qty' => $resourceData['used_qty'],
-                        'staff_id' => $staffId, 
+                        'staff_id' => $staffId, // Include staff_id from logged-in user
                     ]);
                 }
             }
 
             $task->save();
             $project->save();
-            DB::commit();
+
+            DB::commit(); // Commit the transaction
+
+            // Notify the client only if the task is successfully updated
+            if ($task->pt_status == 'C') {
+                $clientProfile = ClientProfile::findOrFail($project->client_id);
+                $clientUser = User::findOrFail($clientProfile->user_id);
+                $clientEmail = $clientUser->email;
+                Log::info('Client email: ' . $clientEmail);
+
+                Mail::to($clientEmail)->send(new CompleteTask($task));
+                Log::info('Task status updated to completed for task: ' . $taskId);
+            }
+
             Log::info('Task and project saved successfully');
 
             return response()->json($responseData, 200);
         } catch (\Exception $e) {
-            DB::rollBack();
+            DB::rollBack(); // Rollback the transaction in case of error
             Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
             return response()->json(['error' => 'An error occurred while updating the task'], 500);
         }

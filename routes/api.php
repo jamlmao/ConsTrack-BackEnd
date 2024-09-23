@@ -109,7 +109,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
     Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
     Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details
-    Route::post('tasks/{task_id}/use-resources', [ResourcesController::class, 'useResourcesForWeek']);
+    Route::get('tasks/{task_id}/used-resources', [ResourcesController::class, 'getUsedResourcesForTask']);
     Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
