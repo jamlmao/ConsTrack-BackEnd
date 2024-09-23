@@ -105,7 +105,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
     Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
-
+    Route::get('/companies',[AController::class,"fetchAllCompanies"]);
     Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
     Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
     Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details

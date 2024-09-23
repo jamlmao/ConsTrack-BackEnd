@@ -13,6 +13,7 @@ class UsedResources extends Model
         'used_resource_name',
         'resource_qty',
         'total_used_resources',
+        'staff_id'
     ];
 
     public function resources()

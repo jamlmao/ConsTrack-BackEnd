@@ -14,12 +14,13 @@ return new class extends Migration
         Schema::create('used_resources', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('resource_id');
+            $table->unsignedBigInteger('staff_id');
             $table->string('used_resource_name');
             $table->integer('resource_qty');
             $table->timestamps();
 
 
-
+            $table->foreign('staff_id')->references('id')->on('staff_profiles')->onDelete('cascade');
             $table->foreign('resource_id')->references('id')->on('resources')->onDelete('cascade');
         });
     }

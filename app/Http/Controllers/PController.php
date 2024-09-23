@@ -1298,6 +1298,7 @@ class PController extends Controller
     
 
 
+
     public function updateTask(Request $request, $taskId)
     {
         $request->validate([
@@ -1307,16 +1308,19 @@ class PController extends Controller
             'resources.*.resource_id' => 'required|integer|exists:resources,id',
             'resources.*.used_qty' => 'required|integer|min:1',
         ]);
-    
+
         try {
+
+            DB::beginTransaction();
+
             // Find the task by ID
             $task = Task::findOrFail($taskId);
             Log::info('Task found: ' . $taskId);
-    
+
             // Find the project associated with the task
             $project = Project::findOrFail($task->project_id);
             Log::info('Project found: ' . $project->id);
-    
+
             // Determine the current week based on the task start date
             $taskStartDate = Carbon::parse($task->pt_starting_date);
             $taskCompletionDate = Carbon::parse($task->pt_completion_date);
@@ -1328,11 +1332,11 @@ class PController extends Controller
             Log::info('Current date: ' . $currentDate);
             Log::info('Current week number: ' . $weekNumber);
             Log::info('Task duration: ' . $taskDuration);
-    
+
             // Determine if the task is in its last week
             $isLastWeek = ($weekNumber == $taskDuration);
             Log::info('Is last week: ' . ($isLastWeek ? 'Yes' : 'No'));
-    
+
             // Function to save image and update the corresponding column
             $saveImage = function($imageData, $column) use ($task) {
                 $decodedImage = base64_decode($imageData, true);
@@ -1341,26 +1345,26 @@ class PController extends Controller
                     return response()->json(['message' => 'Invalid base64 image'], 400);
                 }
                 $uniqueId = uniqid();
-    
+
                 $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '_' . $column . '.webp';
                 $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
-    
+
                 if (!$isSaved) {
                     Log::error('Failed to save image for ' . $column);
                     return response()->json(['message' => 'Failed to save image'], 500);
                 }
-    
+
                 $photoPath = asset('storage/photos/projects/' . $imageName);
                 $task->$column = $photoPath;
                 Log::info('Image saved successfully: ' . $photoPath);
-    
+
                 // Return the image name and upload date
                 return [
                     'image' => $imageName,
                     'uploaded_at' => Carbon::now()->format('Y-m-d')
                 ];
             };
-    
+
             // Initialize response data
             $responseData = [
                 'message' => 'Task updated successfully',
@@ -1372,12 +1376,12 @@ class PController extends Controller
                 'week4_img' => $task->week4_img,
                 'week5_img' => $task->week5_img
             ];
-    
+
             // Handle the update_img field
             if (!empty($request->update_img)) {
                 $imageData = $saveImage($request->update_img, 'update_img');
                 $responseData['update_img'] = $imageData;
-    
+
                 // Update task status to 'C' as it's the final image
                 $task->pt_status = 'C';
                 // Notify the client
@@ -1385,10 +1389,10 @@ class PController extends Controller
                 $clientUser = User::findOrFail($clientProfile->user_id);
                 $clientEmail = $clientUser->email;
                 Log::info('Client email: ' . $clientEmail);
-    
+
                 Mail::to($clientEmail)->send(new CompleteTask($task));
                 Log::info('Task status updated to completed for task: ' . $taskId);
-    
+
                 // Update the used budget only if the task is complete
                 if ($project->total_used_budget !== null) {
                     $project->total_used_budget += $task->pt_allocated_budget;
@@ -1400,7 +1404,7 @@ class PController extends Controller
                 if ($isLastWeek) {
                     $imageData = $saveImage($request->placeholder_image, 'update_img');
                     $responseData['update_img'] = $imageData;
-    
+
                     // Update task status to 'C' as it's the final image
                     $task->pt_status = 'C';
                     // Notify the client
@@ -1408,10 +1412,10 @@ class PController extends Controller
                     $clientUser = User::findOrFail($clientProfile->user_id);
                     $clientEmail = $clientUser->email;
                     Log::info('Client email: ' . $clientEmail);
-    
+
                     Mail::to($clientEmail)->send(new CompleteTask($task));
                     Log::info('Task status updated to completed for task: ' . $taskId);
-    
+
                     // Update the used budget only if the task is complete
                     if ($project->total_used_budget !== null) {
                         $project->total_used_budget += $task->pt_allocated_budget;
@@ -1425,22 +1429,26 @@ class PController extends Controller
                     $responseData[$imgKey] = $imageData;
                 }
             }
-    
+
             // Validate the request data for resources
             $validatedData = $request->validate([
                 'resources' => 'required|array',
                 'resources.*.resource_id' => 'required|integer|exists:resources,id',
                 'resources.*.used_qty' => 'required|integer|min:1',
             ]);
-    
+
             // Fetch resources related to the task
             $resources = Resources::where('task_id', $taskId)->get();
-    
+
             // Check if resources are found
             if ($resources->isEmpty()) {
                 return response()->json(['message' => 'No resources found for this task'], 404);
             }
-    
+
+            // Get the staff_id from the logged-in user
+            $staffId = auth()->user()->staff_id;
+            Log::info('Staff ID: ' . $staffId);
+
             // Iterate over the resources and check if the available quantity is sufficient
             foreach ($validatedData['resources'] as $resourceData) {
                 $resource = $resources->where('id', $resourceData['resource_id'])->first();
@@ -1453,7 +1461,7 @@ class PController extends Controller
                     return response()->json(['message' => 'Resource ID: ' . ($resourceData['resource_id'] ?? 'Unknown') . ' not found'], 404);
                 }
             }
-    
+
             // Iterate over the resources and update the used quantities
             foreach ($validatedData['resources'] as $resourceData) {
                 $resource = $resources->where('id', $resourceData['resource_id'])->first();
@@ -1461,24 +1469,25 @@ class PController extends Controller
                     // Update the total used resources
                     $resource->total_used_resources += $resourceData['used_qty'];
                     $resource->save();
-    
+
                     // Insert into used_resources table
                     UsedResources::create([
                         'resource_id' => $resource->id,
                         'used_resource_name' => $resource->resource_name,
                         'resource_qty' => $resourceData['used_qty'],
-                        'used_at' => now(),
+                        'staff_id' => $staffId, 
                     ]);
                 }
             }
-    
+
             $task->save();
             $project->save();
-    
+            DB::commit();
             Log::info('Task and project saved successfully');
-    
+
             return response()->json($responseData, 200);
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error('Error updating task ' . $taskId . ': ' . $e->getMessage());
             return response()->json(['error' => 'An error occurred while updating the task'], 500);
         }
