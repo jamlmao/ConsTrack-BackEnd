@@ -1829,8 +1829,8 @@ class PController extends Controller
     
         $validatedData = $request->validate([
             'resource_name' => 'required|string|max:255',
-            'qty' => 'required|numeric|min:0',
-            'unit_cost' => 'required|numeric|min:0',
+            'qty' => 'nullable|numeric|min:0',
+            'unit_cost' => 'nullable|numeric|min:0',
         ]);
     
         try {
@@ -1840,18 +1840,28 @@ class PController extends Controller
                 $task = Task::findOrFail($taskId);
     
                 $oldResources = $task->resources->map(function ($resource) {
-                    return $resource->only(['resource_name', 'qty', 'unit_cost']);
+                    return $resource->only(['resource_name', 'qty', 'unit_cost', 'total_cost']);
                 });
     
                 $resource = $task->resources()->where('id', $resourceId)->firstOrFail();
+                $totalCost = $validatedData['qty'] * $validatedData['unit_cost'];
                 $resource->update([
                     'resource_name' => $validatedData['resource_name'],
                     'qty' => $validatedData['qty'],
                     'unit_cost' => $validatedData['unit_cost'],
+                    'total_cost' => $totalCost, // Calculate total cost
+                ]);
+    
+                // Calculate the sum of total_cost for all resources of the same task
+                $totalAllocatedBudget = $task->resources()->sum('total_cost');
+    
+                // Update pt_allocated_budget in the task table
+                $task->update([
+                    'pt_allocated_budget' => $totalAllocatedBudget,
                 ]);
     
                 $newResources = $task->resources->map(function ($resource) {
-                    return $resource->only(['resource_name', 'qty', 'unit_cost']);
+                    return $resource->only(['resource_name', 'qty', 'unit_cost', 'total_cost']);
                 });
     
                 AuditLogT::create([
