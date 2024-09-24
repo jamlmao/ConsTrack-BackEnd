@@ -303,6 +303,90 @@ class AController extends Controller
         }
 
 
+
+
+        public function editClient(Request $request, $clientId)
+        {
+            $user = Auth::user();
+
+            if (!in_array($user->role, ['admin', 'staff'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            if ($user->role !== 'admin' && !$user->staffProfile) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User does not have an associated staff profile'
+                ], 400);
+            }
+
+            $validatedData = $request->validate([
+                'name' => 'required|string|max:20',
+                'email' => 'required|string|email|max:100|unique:users,email,' . $clientId,
+                'first_name' => 'required|string|max:20',
+                'last_name' => 'required|string|max:20',
+                'sex' => 'required|in:M,F',
+                'address' => 'required|string|max:60',
+                'city' => 'required|string|max:60',
+                'country' => 'required|string|max:60',
+                'zipcode' => 'required|string|regex:/^\d{0,9}$/',
+                'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            ]);
+
+            try {
+                DB::transaction(function () use ($request, $user, $validatedData, $clientId) {
+                    $client = User::findOrFail($clientId);
+
+                    $oldValues = $client->only([
+                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
+                    ]);
+
+                    $client->update([
+                        'name' => $validatedData['name'],
+                        'email' => $validatedData['email'],
+                        'updated_by' => $user->id,
+                    ]);
+
+                    $client->ClientProfile()->update([
+                        'first_name' => $validatedData['first_name'],
+                        'last_name' => $validatedData['last_name'],
+                        'sex' => $validatedData['sex'],
+                        'address' => $validatedData['address'],
+                        'city' => $validatedData['city'],
+                        'country' => $validatedData['country'],
+                        'zipcode' => $validatedData['zipcode'],
+                        'phone_number' => $validatedData['phone_number'],
+                    ]);
+
+                    $newValues = $client->only([
+                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
+                    ]);
+
+                    AuditLog::create([
+                        'user_id' => $client->id,
+                        'editor_id' => auth()->user()->id,
+                        'action' => 'edit',
+                        'old_values' => json_encode($oldValues),
+                        'new_values' => json_encode($newValues),
+                    ]);
+                });
+
+                return response()->json([
+                    'message' => 'Client updated successfully',
+                    'client' => $client
+                ], 200);
+            } catch (\Throwable $th) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $th->getMessage()
+                ], 500);
+            }
+        }
+
+
         public function getClientsUnderSameCompany()
         {
             // Get the logged-in staff profile

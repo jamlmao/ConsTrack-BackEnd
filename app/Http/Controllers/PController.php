@@ -10,6 +10,7 @@ use App\Models\ClientProfile;
 use App\Models\StaffProfile;
 use App\Models\ProjectLogs;
 use App\Models\UsedResources;
+use App\Models\AuditLogT;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1720,6 +1721,158 @@ class PController extends Controller
             Log::error('Failed to refresh tables: ' . $e->getMessage());
 
             return response()->json(['message' => 'Failed to refresh tables', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+
+        public function editTask(Request $request, $taskId)
+    {
+        $user = Auth::user();
+
+        if (!in_array($user->role, ['admin', 'staff'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+
+        $validatedData = $request->validate([
+            'pt_task_name' => 'required|string|max:255',
+            'pt_completion_date' => 'required|date',
+            'pt_starting_date' => 'required|date',
+            'pt_photo_task' => 'nullable|string', // base64 encoded image
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            $task = Task::findOrFail($taskId);
+
+            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task']);
+
+            // Handle task status based on completion date
+            $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+            $currentDate = Carbon::now();
+
+            if ($completionDate->isPast()) {
+                $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+            } else {
+                $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+            }
+
+            // Decode the base64 image and save it
+            if (!empty($validatedData['pt_photo_task'])) {
+                $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    throw new \Exception('Invalid base64 image');
+                }
+
+                // Ensure the directory exists
+                $imageName = time() . '.webp';
+                $imagePath = storage_path('app/public/photos/tasks/' . $imageName);
+                if (!file_exists(dirname($imagePath))) {
+                    mkdir(dirname($imagePath), 0755, true);
+                }
+
+                // Save the decoded image to a file or storage
+                file_put_contents($imagePath, $decodedImage);
+
+                $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
+                $validatedData['pt_photo_task'] = $photoPath;
+            }
+
+            $task->update([
+                'pt_task_name' => $validatedData['pt_task_name'],
+                'pt_completion_date' => $validatedData['pt_completion_date'],
+                'pt_starting_date' => $validatedData['pt_starting_date'],
+                'pt_photo_task' => $validatedData['pt_photo_task'] ?? $task->pt_photo_task,
+                'pt_status' => $validatedData['pt_status'],
+                'updated_by' => $user->id,
+            ]);
+
+            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_status']);
+
+            AuditLogT::create([
+                'task_id' => $task->id,
+                'editor_id' => $user->id,
+                'action' => 'edit',
+                'old_values' => json_encode($oldValues),
+                'new_values' => json_encode($newValues),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Task updated successfully',
+                'task' => $task
+            ], 200);
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
+        }
+    }
+
+    public function editTaskResources(Request $request, $taskId, $resourceId)
+    {
+        $user = Auth::user();
+    
+        if (!in_array($user->role, ['admin', 'staff'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+    
+        $validatedData = $request->validate([
+            'resource_name' => 'required|string|max:255',
+            'qty' => 'required|numeric|min:0',
+            'unit_cost' => 'required|numeric|min:0',
+        ]);
+    
+        try {
+            $task = null; // Declare the variable outside the closure
+    
+            DB::transaction(function () use ($request, $user, $validatedData, $taskId, $resourceId, &$task) {
+                $task = Task::findOrFail($taskId);
+    
+                $oldResources = $task->resources->map(function ($resource) {
+                    return $resource->only(['resource_name', 'qty', 'unit_cost']);
+                });
+    
+                $resource = $task->resources()->where('id', $resourceId)->firstOrFail();
+                $resource->update([
+                    'resource_name' => $validatedData['resource_name'],
+                    'qty' => $validatedData['qty'],
+                    'unit_cost' => $validatedData['unit_cost'],
+                ]);
+    
+                $newResources = $task->resources->map(function ($resource) {
+                    return $resource->only(['resource_name', 'qty', 'unit_cost']);
+                });
+    
+                AuditLogT::create([
+                    'task_id' => $task->id,
+                    'editor_id' => $user->id,
+                    'action' => 'edit_resources',
+                    'old_values' => json_encode(['resources' => $oldResources]),
+                    'new_values' => json_encode(['resources' => $newResources]),
+                ]);
+            });
+    
+            return response()->json([
+                'message' => 'Task resources updated successfully',
+                'task' => $task->load('resources')
+            ], 200);
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
         }
     }
 }

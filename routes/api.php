@@ -101,7 +101,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('clients/{clientId}/projects', [PController::class, 'getClientProjects']);
 
 
-
+    Route::put('/clients/{clientId}', [AController::class, 'editClient']); 
+    Route::put('/tasks/{taskId}', [PController::class, 'editTask']);
+    Route::put('/tasks/{taskId}/resources/{resourceId}', [PController::class, 'editTaskResources']);
 
     Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
