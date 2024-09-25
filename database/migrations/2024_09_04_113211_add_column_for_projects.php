@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('site_city');
             $table->string('site_province');
             $table->string('project_name');
+            $table->string('project_type');
             $table->unsignedBigInteger('company_id');
 
             $table->foreign('company_id')->references('id')->on('companies')->onDelete('cascade');

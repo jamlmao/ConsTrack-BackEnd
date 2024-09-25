@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('task_id');
             $table->string('resource_name');
+            $table->integer('total_used_resources');
             $table->integer('qty');
             $table->decimal('unit_cost', 8, 2);
             $table->decimal('total_cost', 8, 2);

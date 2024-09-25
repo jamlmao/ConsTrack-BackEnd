@@ -27,8 +27,11 @@ class Project extends Model
         'starting_date',
         'totalBudget',
         'pj_image',
+        'pj_image1',
+        'pj_image2',
         'pj_pdf',
         'total_used_budget',
+        'project_type'
     ];
 
       // Define the relationship with the Client model

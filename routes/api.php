@@ -7,6 +7,8 @@ use App\Http\Controllers\AController;
 use App\Http\Controllers\PController;
 use App\Http\Controllers\TaskController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ResourcesController;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -36,6 +38,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
+ 
     Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
 
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
@@ -45,9 +48,12 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsTasks/{project_id}', [PController::class, 'getProjectTasks']);
     Route::get('/projectD/{project_id}', [PController::class, 'getProjectDetails']);
     Route::get('/sortedTask/{project_id}', [PController::class, 'getSortedProjectTasks']);
+   
+
+    
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
-    Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
+    Route::post('/refresh-tables', [PController::class, 'refreshTables']);
     
     
     Route::get('/Alltask', [TaskController::class, 'getAllTasksWithResources']);
@@ -58,20 +64,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('/appointments/{id}/status', [AppointmentController::class, 'updateStatus']);
     Route::get('/notifications', [AppointmentController::class, 'getNotifications']);
 
-    Route::get('/tasks/{projectId}/general', [TaskController::class, 'getGeneralTasks']);
-    Route::get('/tasks/{projectId}/site', [TaskController::class, 'getSiteWorksTasks']);
-    Route::get('/tasks/{projectId}/concrete', [TaskController::class, 'getConcreteWorksTasks']);
-    Route::get('/tasks/{projectId}/metal', [TaskController::class, 'getMetalWorksTasks']);
-    Route::get('/tasks/{projectId}/forms', [TaskController::class, 'getFormsAndScaffoldingWorksTasks']);
-    Route::get('/tasks/{projectId}/steel', [TaskController::class, 'getSteelWorksTasks']);
-    Route::get('/tasks/{projectId}/tins', [TaskController::class, 'getTinsWorksTasks']);
-    Route::get('/tasks/{projectId}/plaster', [TaskController::class, 'getPlasterWorksTasks']);
-    Route::get('/tasks/{projectId}/paint', [TaskController::class, 'getPaintsWorksTasks']);
-    Route::get('/tasks/{projectId}/plumbing', [TaskController::class, 'getPlumbingWorksTasks']);
-    Route::get('/tasks/{projectId}/electrical', [TaskController::class, 'getElectricalWorksTasks']);
-    Route::get('/tasks/{projectId}/ceiling', [TaskController::class, 'getCeilingWorksTasks']);
-    Route::get('/tasks/{projectId}/archi', [TaskController::class, 'getArchiWorksTasks']);
-
+   
     Route::get('/projectCount', [PController::class, 'getAllProjectCounts']); //ADMIN
     Route::get('/admin/projects', [PController::class, 'getAllProjectsForAdmin']);
     Route::get('/admin/users', [AController::class, 'getAllUsers']);
@@ -89,6 +82,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsY', [PController::class, 'getProjectPerYear']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
+    Route::get('/clientsCount', [AController::class, 'getClientsUnderSameCompany2']);
+
     Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     
@@ -108,5 +103,19 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('clients/{clientId}/projects', [PController::class, 'getClientProjects']);
 
 
+    Route::put('/clients/{clientId}', [AController::class, 'editClient']); 
+    Route::put('/Etasks/{taskId}', [PController::class, 'editTask']);
+    Route::put('/tasks/{taskId}/resources/{resourceId}', [PController::class, 'editTaskResources']);
+    Route::put('/editCategory/{category_id}', [CategoryController::class, 'editCategory']);
 
+    Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
+    Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
+    Route::get('/companies',[AController::class,"fetchAllCompanies"]);
+    Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
+    Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
+    Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details
+    Route::get('tasks/{task_id}/used-resources', [ResourcesController::class, 'getUsedResourcesForTask']);
+    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
+    Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
+    Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
 });

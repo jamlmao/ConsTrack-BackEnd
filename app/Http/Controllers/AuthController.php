@@ -74,7 +74,7 @@ class AuthController extends Controller
                 $token = $tokenResult->plainTextToken;
     
                 // Set the expiration time on the accessToken
-                $tokenResult->accessToken->expires_at = now()->addHours(8); // Set token to expire in 8 hours
+                $tokenResult->accessToken->expires_at = now()->addHours(12); // Set token to expire in 8 hours
                 $tokenResult->accessToken->save();
     
                 $role = $user->role; // Get the role of the user
