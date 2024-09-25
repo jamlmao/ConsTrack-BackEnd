@@ -82,6 +82,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsY', [PController::class, 'getProjectPerYear']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
+    Route::get('/clientsCount', [AController::class, 'getClientsUnderSameCompany2']);
+
     Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     
@@ -102,8 +104,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
 
     Route::put('/clients/{clientId}', [AController::class, 'editClient']); 
-    Route::put('/tasks/{taskId}', [PController::class, 'editTask']);
+    Route::put('/Etasks/{taskId}', [PController::class, 'editTask']);
     Route::put('/tasks/{taskId}/resources/{resourceId}', [PController::class, 'editTaskResources']);
+    Route::put('/editCategory/{category_id}', [CategoryController::class, 'editCategory']);
 
     Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);

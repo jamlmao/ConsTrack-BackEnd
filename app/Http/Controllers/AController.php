@@ -429,6 +429,35 @@ class AController extends Controller
             return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
         }
 
+        public function getClientsUnderSameCompany2()
+        {
+            // Get the logged-in staff profile
+            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+
+            if (!$staffProfile) {
+                return response()->json(['error' => 'Staff profile not found'], 404);
+            }
+
+            // Get the company ID from the staff profile
+            $companyId = $staffProfile->company_id;
+
+            // Get clients under the same company and their project statuses
+            $clients = DB::table('client_profiles')
+                ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
+                ->leftJoin('users', 'client_profiles.user_id', '=', 'users.id') // Join with users table
+                ->where('client_profiles.company_id', $companyId)
+                ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
+                ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
+                ->select('client_profiles.id') // Only select the client IDs
+                ->get();
+
+            // Count the number of clients
+            $clientCount = $clients->count();
+
+            return response()->json(['client_count' => $clientCount], 200);
+        }
+
+
 
        
         public function getStaffWithExtensionAndLicense()

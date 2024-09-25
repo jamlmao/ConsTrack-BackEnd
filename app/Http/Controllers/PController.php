@@ -57,7 +57,9 @@ class PController extends Controller
                 'starting_date' => 'required|date',
                 'totalBudget' => 'required|integer',
                 'pj_image' => 'required|string',  
-                'pj_pdf' => 'required|string', 
+                'pj_image1' => 'nullable|string', 
+                'pj_image2' => 'nullable|string', 
+                'pj_pdf' => 'nullable|string', 
                 'company_id' => 'required_if:user.role,admin|integer|exists:companies,id', 
                 'selected_staff_id' => 'nullable|integer|exists:staff_profiles,id', // Validate selected staff ID
             ]);
@@ -100,6 +102,44 @@ class PController extends Controller
     
                 $photoPath = asset('storage/photos/projects/' . $imageName);
                 $validatedData['pj_image'] = $photoPath; 
+            }
+      // Decode the base64 encoded image1
+            if (!empty($validatedData['pj_image1'])) {
+                $decodedImage = base64_decode($validatedData['pj_image1'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image1'] = $photoPath; 
+            }
+      // Decode the base64 encoded image2
+            if (!empty($validatedData['pj_image2'])) {
+                $decodedImage = base64_decode($validatedData['pj_image2'], true);
+                if ($decodedImage === false) {
+                    Log::error('Invalid base64 image');
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+    
+                $imageName = time() . '.png';
+                $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
+    
+                if (!$isSaved) {
+                    Log::error('Failed to save image');
+                    return response()->json(['message' => 'Failed to save image'], 500);
+                }
+    
+                $photoPath = asset('storage/photos/projects/' . $imageName);
+                $validatedData['pj_image2'] = $photoPath; 
             }
     
             // Decode the base64 encoded PDF
@@ -219,6 +259,7 @@ class PController extends Controller
                     'completion_date' => $project->completion_date,
                     'pj_image' => $project->pj_image,
                     'pj_pdf' => $project->pj_pdf,
+                    'project_type' => $project->project_type,
                     'starting_date' => $project->starting_date,
                     'totalBudget' => $project->totalBudget,
                     'created_at' => $project->created_at,
@@ -1724,42 +1765,52 @@ class PController extends Controller
         }
     }
 
-
-        public function editTask(Request $request, $taskId)
+  
+    public function editTask(Request $request, $taskId)
     {
         $user = Auth::user();
-
+    
         if (!in_array($user->role, ['admin', 'staff'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'Unauthorized'
             ], 403);
         }
-
+    
         $validatedData = $request->validate([
-            'pt_task_name' => 'required|string|max:255',
-            'pt_completion_date' => 'required|date',
-            'pt_starting_date' => 'required|date',
+            'pt_task_name' => 'nullable|string|max:255',
+            'pt_completion_date' => 'nullable|date',
+            'pt_starting_date' => 'nullable|date',
             'pt_photo_task' => 'nullable|string', // base64 encoded image
         ]);
-
+    
+        // Check if all submitted fields are null
+        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_photo_task'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'No fields to update'
+            ], 400);
+        }
+    
         DB::beginTransaction();
-
+    
         try {
             $task = Task::findOrFail($taskId);
-
+    
             $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task']);
-
+    
             // Handle task status based on completion date
-            $completionDate = Carbon::parse($validatedData['pt_completion_date']);
-            $currentDate = Carbon::now();
-
-            if ($completionDate->isPast()) {
-                $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
-            } else {
-                $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+            if (!empty($validatedData['pt_completion_date'])) {
+                $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+                $currentDate = Carbon::now();
+    
+                if ($completionDate->isPast()) {
+                    $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+                } else {
+                    $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                }
             }
-
+    
             // Decode the base64 image and save it
             if (!empty($validatedData['pt_photo_task'])) {
                 $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
@@ -1767,32 +1818,37 @@ class PController extends Controller
                     Log::error('Invalid base64 image');
                     throw new \Exception('Invalid base64 image');
                 }
-
+    
                 // Ensure the directory exists
                 $imageName = time() . '.webp';
                 $imagePath = storage_path('app/public/photos/tasks/' . $imageName);
                 if (!file_exists(dirname($imagePath))) {
                     mkdir(dirname($imagePath), 0755, true);
                 }
-
+    
                 // Save the decoded image to a file or storage
                 file_put_contents($imagePath, $decodedImage);
-
+    
                 $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
                 $validatedData['pt_photo_task'] = $photoPath;
             }
-
-            $task->update([
+    
+            // Prepare the update array
+            $updateData = array_filter([
                 'pt_task_name' => $validatedData['pt_task_name'],
                 'pt_completion_date' => $validatedData['pt_completion_date'],
                 'pt_starting_date' => $validatedData['pt_starting_date'],
                 'pt_photo_task' => $validatedData['pt_photo_task'] ?? $task->pt_photo_task,
-                'pt_status' => $validatedData['pt_status'],
+                'pt_status' => $validatedData['pt_status'] ?? $task->pt_status,
                 'updated_by' => $user->id,
-            ]);
-
+            ], function ($value) {
+                return !is_null($value);
+            });
+    
+            $task->update($updateData);
+    
             $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_status']);
-
+    
             AuditLogT::create([
                 'task_id' => $task->id,
                 'editor_id' => $user->id,
@@ -1800,9 +1856,9 @@ class PController extends Controller
                 'old_values' => json_encode($oldValues),
                 'new_values' => json_encode($newValues),
             ]);
-
+    
             DB::commit();
-
+    
             return response()->json([
                 'message' => 'Task updated successfully',
                 'task' => $task

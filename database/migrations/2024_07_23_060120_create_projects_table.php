@@ -21,6 +21,8 @@ class CreateProjectsTable extends Migration
             $table->string('status');
             $table->date('completion_date');
             $table->string('pj_image')->nullable();
+            $table->string('pj_image1')->nullable();
+            $table->string('pj_image2')->nullable();
             $table->string('pj_pdf')->nullable();
             $table->date('starting_date');
             $table->integer('totalBudget');
