@@ -1900,13 +1900,18 @@ class PController extends Controller
                 });
     
                 $resource = $task->resources()->where('id', $resourceId)->firstOrFail();
-                $totalCost = $validatedData['qty'] * $validatedData['unit_cost'];
-                $resource->update([
+    
+                // Prepare the update array
+                $updateData = array_filter([
                     'resource_name' => $validatedData['resource_name'],
                     'qty' => $validatedData['qty'],
                     'unit_cost' => $validatedData['unit_cost'],
-                    'total_cost' => $totalCost, // Calculate total cost
-                ]);
+                    'total_cost' => isset($validatedData['qty']) && isset($validatedData['unit_cost']) ? $validatedData['qty'] * $validatedData['unit_cost'] : null,
+                ], function ($value) {
+                    return !is_null($value);
+                });
+    
+                $resource->update($updateData);
     
                 // Calculate the sum of total_cost for all resources of the same task
                 $totalAllocatedBudget = $task->resources()->sum('total_cost');

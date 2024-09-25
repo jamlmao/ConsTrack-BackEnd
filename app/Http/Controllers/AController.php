@@ -820,6 +820,8 @@ class AController extends Controller
                         'phone_number' => $clientProfile->phone_number,
                         'company_id' => $clientProfile->company_id,
                         'company_name' => $company ? $company->company_name : null, 
+                        
+                        'company_logo' => $company ? $company->company_logo : null,
                     ];
                 }
             }

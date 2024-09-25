@@ -20,6 +20,8 @@ class AppointmentController extends Controller
 {
     public function setAppointment(Request $request)
     {
+        DB::beginTransaction();
+    
         try {
             // Validate the request
             $validatedData = $request->validate([
@@ -27,29 +29,29 @@ class AppointmentController extends Controller
                 'description' => 'required|string|max:255',
                 'appointment_datetime' => 'required|date_format:Y-m-d H:i:s',
             ]);
-
+    
             $validatedData['status'] = 'P';
-
+    
             // Get the logged-in client's ID
             $userId = Auth::id();
-
+    
             // Debugging: Log the validated data and client ID
             Log::info('Validated Data: ', $validatedData);
-
+    
             $clientProfile = ClientProfile::where('user_id', $userId)->first();
-
+    
             if (!$clientProfile) {
                 return response()->json(['message' => 'Client profile not found.'], 404);
             }
-
+    
             $clientId = $clientProfile->id;
             $companyId = $clientProfile->company_id;
-
+    
             Log::info('Client ID: ', ['client_id' => $clientId]);
-
+    
             // Extract the date from the appointment_datetime
             $appointmentDate = Carbon::parse($validatedData['appointment_datetime'])->format('Y-m-d');
-
+    
             // Check for appointment conflicts within the same company and date
             $conflict = Appointment::where('staff_id', $validatedData['staff_id'])
                 ->whereDate('appointment_datetime', $appointmentDate)
@@ -57,11 +59,11 @@ class AppointmentController extends Controller
                     $query->where('company_id', $companyId);
                 })
                 ->exists();
-
+    
             if ($conflict) {
                 return response()->json(['message' => 'The appointment date conflicts with another appointment in the same company.'], 400);
             }
-
+    
             // Create the appointment
             $appointment = Appointment::create([
                 'staff_id' => $validatedData['staff_id'],
@@ -70,18 +72,20 @@ class AppointmentController extends Controller
                 'appointment_datetime' => $validatedData['appointment_datetime'],
                 'status' => $validatedData['status'],
             ]);
-
+    
             // Debugging: Log the created appointment
             Log::info('Created Appointment: ', $appointment->toArray());
-
+    
             // Send email to staff
             $staffProfile = StaffProfile::find($validatedData['staff_id']);
             $staffEmail = $staffProfile->user->email;
             Mail::to($staffEmail)->send(new AppointmentRequest($clientProfile, $appointment));
-
+    
+            DB::commit();
+    
             return response()->json(['message' => 'Appointment request sent successfully.'], 200);
         } catch (\Exception $e) {
-           
+            DB::rollBack();
             Log::error('Error creating appointment: ', ['error' => $e->getMessage()]);
             return response()->json(['message' => 'Failed to create appointment.'], 500);
         }
