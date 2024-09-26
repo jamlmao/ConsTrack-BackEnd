@@ -114,7 +114,7 @@ class AppointmentController extends Controller
                 ->with(['client.project' => function($query) {
                     $query->select('id', 'client_id', 'site_city', 'site_address', 'site_province');
                 }, 'client' => function($query) {
-                    $query->select('id', 'first_name', 'last_name', 'company_id');
+                    $query->select('id', 'first_name', 'last_name', 'company_id','phone_number');
                 }])
                 ->get(['id', 'client_id', 'description', 'appointment_datetime', 'status']);
 
@@ -134,6 +134,7 @@ class AppointmentController extends Controller
                     'client_id' => $appointment->client_id,
                     'client_first_name' => $appointment->client->first_name,
                     'client_last_name' => $appointment->client->last_name,
+                    'client_phone_number' => $appointment->client->phone_number,
                     'company_id' => $appointment->client->company_id,
                     'site_city' => $project->site_city,
                     'site_address' => $project->site_address,
