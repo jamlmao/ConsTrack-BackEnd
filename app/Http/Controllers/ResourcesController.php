@@ -34,32 +34,42 @@ class ResourcesController extends Controller
     {
         try {
             $task = Task::find($task_id);
-
+    
             if (!$task) {
                 return response()->json(['message' => 'Task not found'], 404);
             }
-
+    
             $category = Category::find($task->category_id);
             $category_name = $category->category_name;
-
+    
             // Fetch all resources associated with the given task ID
             $resources = Resources::where('task_id', $task_id)->get();
-
+    
             // Check if resources are found
             if ($resources->isEmpty()) {
                 return response()->json(['message' => 'No resources found for this task'], 404);
             }
-
+    
             // Calculate the left resources for each resource
             $resourcesWithLeftQty = $resources->map(function ($resource) {
                 $resource->left_qty = $resource->qty - $resource->total_used_resources;
                 return $resource;
             });
-
-            // Return the resources
+    
+            // Calculate the total used resources
+            $totalUsedResources = $task->resources->sum(function ($resource) {
+                return $resource['unit_cost'] * $resource['total_used_resources'];
+            });
+            Log::info('Total used resources: ' . $totalUsedResources);
+    
+            // Calculate the percentage based on total used resources
+            $task->percentage = $totalUsedResources >= $task->pt_allocated_budget ? 100 : ($totalUsedResources / $task->pt_allocated_budget) * 100;
+            Log::info('Task percentage: ' . $task->percentage);
+    
+            // Return the resources along with the task and category name
             return response()->json([
                 'resources' => $resourcesWithLeftQty,
-                'tasks' => $task,
+                'task' => $task,
                 'category_name' => $category_name,
             ], 200);
         } catch (Exception $e) {

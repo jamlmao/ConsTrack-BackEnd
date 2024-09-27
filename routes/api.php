@@ -39,7 +39,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
  
-    Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
+    Route::post('/updatetask/{task_id}', [TaskController::class, 'updateTask']);
 
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
 
@@ -108,6 +108,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::put('/tasks/{taskId}/resources/{resourceId}', [PController::class, 'editTaskResources']);
     Route::put('/editCategory/{category_id}', [CategoryController::class, 'editCategory']);
 
+
+
+    Route::post('/tasks/complete', [TaskController::class, 'CompleteTask']);
     Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
     Route::get('/companies',[AController::class,"fetchAllCompanies"]);

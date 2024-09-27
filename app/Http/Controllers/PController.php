@@ -614,6 +614,7 @@ class PController extends Controller
       
         public function addTaskv2(Request $request, $project_id)
         {
+            DB::beginTransaction();
             try {
                 // Validate the incoming request for task
                 $validatedData = $request->validate([
@@ -628,7 +629,7 @@ class PController extends Controller
                     'resources.*.unit_cost' => 'required|numeric',
                     'category_id' => 'required|exists:categories,id', // Validate category_id
                 ]);
-
+            
                 // Add the project_id to the validated data
                 $validatedData['project_id'] = $project_id;
 
@@ -762,8 +763,10 @@ class PController extends Controller
                     Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
                 }
 
+                DB::commit();
                 return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);
             } catch (Exception $e) {
+                DB::rollBack();
                 Log::error('Failed to add task: ' . $e->getMessage());
                 return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
             }
@@ -823,7 +826,7 @@ class PController extends Controller
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)
                 ->with('resources:id,task_id,resource_name,qty,unit_cost,total_cost', 'category:id,category_name')
-                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget','update_img', 'week1_img', 'week2_img', 'week3_img', 'week4_img','week5_img','update_file', 'created_at', 'updated_at', 'pt_file_task','category_id']);
+                ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'created_at', 'updated_at', 'pt_file_task','category_id']);
         
                 // Calculate the total number of tasks
                 $totalTasks = $tasks->count();
@@ -929,10 +932,6 @@ class PController extends Controller
                 $totalAllocatedBudgetPerCategory = [];
                 $totalBudget = $tasks->sum('pt_allocated_budget');
         
-                // Define the current period (e.g., today)
-                $todayStart = now()->startOfDay();
-                $todayEnd = now()->endOfDay();
-        
                 foreach ($customOrder as $categoryName) {
                     $category = $categories->firstWhere('category_name', $categoryName);
                     $categoryId = $category->id;
@@ -945,18 +944,13 @@ class PController extends Controller
                     // Calculate the percentage value of the category based on c_allocated_budget
                     $categoryPercentage = $categoryAllocatedBudget > 0 ? ($categoryBudget / $categoryAllocatedBudget) * 100 : 0;
         
-                    // Initialize budget trackers
-                    $previousBudget = 0;
-                    $thisPeriodBudget = 0;
-                    $toDateBudget = 0;
-        
                     // Calculate the percentage for each task based on the status and budget
                     $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($categoryAllocatedBudget, $totalBudget) {
                         // Fetch resources for the task from the used_resources table and join with resources table
                         $taskResources = DB::table('used_resources')
                             ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
                             ->where('resources.task_id', $task->id)
-                            ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'used_resources.created_at']);
+                            ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'resources.unit_cost', 'used_resources.created_at']);
         
                         $task->resources = $taskResources->map(function ($resource) {
                             return [
@@ -964,20 +958,20 @@ class PController extends Controller
                                 'name' => $resource->resource_name,
                                 'total_used_resources' => $resource->total_used_resources,
                                 'qty' => $resource->resource_qty,
+                                'unit_cost' => $resource->unit_cost,
                                 'used_date' => $resource->created_at
                             ];
                         });
         
                         // Calculate the total used resources for the task
-                        $totalUsedResources = $task->resources->sum('total_used_resources');
+                        $totalUsedResources = $task->resources->sum(function ($resource) {
+                            return $resource['unit_cost'] * $resource['total_used_resources'];
+                        });
+                        Log::info('Total used resources: ' . $totalUsedResources);
         
-                        // Calculate the percentage based on total used resources and update_img
-                        if (!empty($task->update_img)) {
-                            $task->percentage = 100;
-                        } else {
-                            $task->percentage = $totalUsedResources > 0 ? ($totalUsedResources / $task->pt_allocated_budget) * 100 : 0;
-                        }
-        
+                        // Calculate the percentage based on total used resources
+                        $task->percentage = $totalUsedResources >= $task->pt_allocated_budget ? 100 : ($totalUsedResources / $task->pt_allocated_budget) * 100;
+                        Log::info('Task percentage: ' . $task->percentage);
                         return $task;
                     });
         
@@ -985,35 +979,24 @@ class PController extends Controller
                         return $carry + $task->resources->sum('total_used_resources');
                     }, 0);
         
-                    // Check if there are any completed tasks
-                    $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
-                        return $task->pt_status === 'C';
-                    });
-        
-                    // Calculate budgets based on task completion dates
-                    foreach ($completedTasks as $task) {
-                        $completionDate = $task->updated_at;
-                        if ($completionDate < $todayStart) {
-                            $previousBudget += $task->pt_allocated_budget;
-                        } elseif ($completionDate >= $todayStart && $completionDate <= $todayEnd) {
-                            $thisPeriodBudget += $task->pt_allocated_budget;
-                        }
-                        $toDateBudget += $task->pt_allocated_budget;
-                    }
-        
-                    $categoryPercentage = $completedTasks->isEmpty() ? 0 : $completedTasks->sum('pt_allocated_budget') / $categoryAllocatedBudget * 100;
-        
-                    $totalAllocatedBudgetPerCategory[$categoryName] = [
+                    $categoryData = [
                         'category_id' => $categoryId,
                         'c_allocated_budget' => $categoryAllocatedBudget,
                         'tasks' => $categoryTasksWithPercentage->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
-                        'progress' => $categoryPercentage,
-                        'totalUsedResources' => $totalUsedResources,
-                        'todate' => $toDateBudget,
-                        'previous' => $previousBudget,
-                        'thisperiod' => $thisPeriodBudget
+                        'totalUsedResources' => $totalUsedResources
                     ];
+        
+                    // Only add 'progress' if the task status is 'C'
+                    $completedTasks = $categoryTasksWithPercentage->where('pt_status', 'C');
+                    if ($completedTasks->isNotEmpty()) {
+                        $completedBudget = $completedTasks->sum('pt_allocated_budget');
+                        $categoryData['progress'] = $categoryAllocatedBudget > 0 ? ($completedBudget / $categoryAllocatedBudget) * 100 : 0;
+                    } else {
+                        $categoryData['progress'] = 0;
+                    }
+        
+                    $totalAllocatedBudgetPerCategory[$categoryName] = $categoryData;
                 }
         
                 // Return the sorted tasks and total allocated budget per category in a JSON response
@@ -1025,6 +1008,11 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
+        
+
+
+
+
         
         public function getProjectTasksGroupedByMonth($project_id)
         {
