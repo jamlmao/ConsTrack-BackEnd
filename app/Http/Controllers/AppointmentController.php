@@ -14,12 +14,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon; 
 use App\Mail\AppointmentAccepted;
 use App\Mail\AppointmentRejected;
-
+use App\Models\AvailableDate;
 
 class AppointmentController extends Controller
 {
     public function setAppointment(Request $request)
     {
+        // Log the incoming request data
+        Log::info('Incoming Request Data: ', $request->all());
+    
         DB::beginTransaction();
     
         try {
@@ -27,7 +30,7 @@ class AppointmentController extends Controller
             $validatedData = $request->validate([
                 'staff_id' => 'required|exists:staff_profiles,id',
                 'description' => 'required|string|max:255',
-                'appointment_datetime' => 'required|date_format:Y-m-d H:i:s',
+                'appointment_datetime' => 'required|date_format:Y-m-d H:i:s|nullable',
             ]);
     
             $validatedData['status'] = 'P';
@@ -52,6 +55,15 @@ class AppointmentController extends Controller
             // Extract the date from the appointment_datetime
             $appointmentDate = Carbon::parse($validatedData['appointment_datetime'])->format('Y-m-d');
     
+            // Check if the selected date is available for the staff member
+            $isAvailable = AvailableDate::where('staff_id', $validatedData['staff_id'])
+                ->whereDate('available_date', $appointmentDate)
+                ->exists();
+    
+            if (!$isAvailable) {
+                return response()->json(['message' => 'The selected date is not available for the staff member.'], 400);
+            }
+    
             // Check for appointment conflicts within the same company and date
             $conflict = Appointment::where('staff_id', $validatedData['staff_id'])
                 ->whereDate('appointment_datetime', $appointmentDate)
@@ -64,12 +76,18 @@ class AppointmentController extends Controller
                 return response()->json(['message' => 'The appointment date conflicts with another appointment in the same company.'], 400);
             }
     
+            // Handle nullable time
+            $appointmentDatetime = Carbon::parse($validatedData['appointment_datetime']);
+            if (!$appointmentDatetime->hour && !$appointmentDatetime->minute && !$appointmentDatetime->second) {
+                $appointmentDatetime->setTime(0, 0, 0); // Default to 00:00:00 if time is not provided
+            }
+    
             // Create the appointment
             $appointment = Appointment::create([
                 'staff_id' => $validatedData['staff_id'],
                 'client_id' => $clientId,
                 'description' => $validatedData['description'],
-                'appointment_datetime' => $validatedData['appointment_datetime'],
+                'appointment_datetime' => $appointmentDatetime,
                 'status' => $validatedData['status'],
             ]);
     
@@ -92,6 +110,8 @@ class AppointmentController extends Controller
     }
 
 
+
+    
     public function getStaffAppointments()
     {
         try {
@@ -155,6 +175,10 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
+
+
+
+
 
     public function updateStatus(Request $request, $id)
     {
@@ -242,6 +266,9 @@ class AppointmentController extends Controller
     
         return $availableDates;
     }
+
+
+
     
     private function isDateTaken($date)
     {
@@ -280,6 +307,52 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
+
+
+
+    public function insertAvailableDates(Request $request)
+    {
+        $user = auth()->user();
+        $staffId = $user->staffProfile->id;
+        $dates = $request->input('dates'); // Array of dates like [20, 10, 9]
+
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
+
+        foreach ($dates as $day) {
+            $availableDate = Carbon::create($currentYear, $currentMonth, $day);
+            AvailableDate::create([
+                'staff_id' => $staffId,
+                'available_date' => $availableDate,
+            ]);
+        }
+
+        return response()->json(['message' => 'Available dates inserted successfully']);
+    }
+
+
+
+
+            public function getAvailableDates2()
+        {
+            $user = auth()->user();
+            $staffId = $user->staffProfile->id;
+
+            $currentMonth = Carbon::now()->month;
+            $currentYear = Carbon::now()->year;
+
+            $availableDates = AvailableDate::where('staff_id', $staffId)
+                ->whereMonth('available_date', $currentMonth)
+                ->whereYear('available_date', $currentYear)
+                ->get();
+
+            return response()->json(['available_dates' => $availableDates]);
+        }
+
+
+
+     
+
 }
 
 

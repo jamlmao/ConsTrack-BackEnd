@@ -121,4 +121,9 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
+
+
+
+    Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
+    Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);
 });
