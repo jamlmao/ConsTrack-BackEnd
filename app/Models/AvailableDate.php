@@ -14,4 +14,9 @@ class AvailableDate extends Model
     {
         return $this->belongsTo(StaffProfile::class);
     }
+
+    public function appointments()
+    {
+        return $this->hasMany(Appointment::class, 'staff_id', 'staff_id');
+    }
 }

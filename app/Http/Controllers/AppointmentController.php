@@ -314,44 +314,85 @@ class AppointmentController extends Controller
     {
         $user = auth()->user();
         $staffId = $user->staffProfile->id;
-        $dates = $request->input('dates'); // Array of dates like [20, 10, 9]
-
+        $dates = $request->input('dates'); 
+    
+        $currentDay = Carbon::now()->day;
         $currentMonth = Carbon::now()->month;
         $currentYear = Carbon::now()->year;
-
+    
         foreach ($dates as $day) {
-            $availableDate = Carbon::create($currentYear, $currentMonth, $day);
+            // Check if the day is in the past
+            if ($day < $currentDay) {
+                $availableDate = Carbon::create($currentYear, $currentMonth + 1, $day);
+            } else {
+                $availableDate = Carbon::create($currentYear, $currentMonth, $day);
+            }
+    
             AvailableDate::create([
                 'staff_id' => $staffId,
                 'available_date' => $availableDate,
             ]);
         }
-
+    
         return response()->json(['message' => 'Available dates inserted successfully']);
     }
 
 
 
 
-            public function getAvailableDates2()
-        {
-            $user = auth()->user();
-            $staffId = $user->staffProfile->id;
+    public function getAvailableDates2()
+    {
+        $user = auth()->user();
+        $companyId = $user->staffProfile->company_id;
 
-            $currentMonth = Carbon::now()->month;
-            $currentYear = Carbon::now()->year;
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
 
-            $availableDates = AvailableDate::where('staff_id', $staffId)
-                ->whereMonth('available_date', $currentMonth)
-                ->whereYear('available_date', $currentYear)
+        $availableDates = AvailableDate::whereHas('staff', function ($query) use ($companyId) {
+            $query->where('company_id', $companyId);
+        })
+        ->whereMonth('available_date', $currentMonth)
+        ->whereYear('available_date', $currentYear)
+        ->get()
+        ->map(function ($availableDate) {
+            $appointments = Appointment::select('appointments.id', 'appointments.staff_id', 'appointments.appointment_datetime', 'appointments.status', 'client_profiles.first_name', 'client_profiles.last_name', 'client_profiles.phone_number')
+                ->join('client_profiles', 'appointments.client_id', '=', 'client_profiles.id')
+                ->whereDate('appointment_datetime', $availableDate->available_date)
+                ->where('appointments.staff_id', $availableDate->staff_id)
                 ->get();
 
-            return response()->json(['available_dates' => $availableDates]);
-        }
+            $availableDate->appointments = $appointments;
+            return $availableDate;
+        });
 
-
-
+        return response()->json(['available_dates' => $availableDates]);
+    }
      
+
+
+    public function getAvailableDates3() /// for gettin all available dates even other months 
+    {
+        $user = auth()->user();
+        $companyId = $user->staffProfile->company_id;
+    
+        $availableDates = AvailableDate::whereHas('staff', function ($query) use ($companyId) {
+            $query->where('company_id', $companyId);
+        })
+        ->get()
+        ->map(function ($availableDate) {
+            $appointments = Appointment::select('appointments.id', 'appointments.staff_id', 'appointments.appointment_datetime', 'appointments.status', 'client_profiles.first_name', 'client_profiles.last_name', 'client_profiles.phone_number')
+                ->join('client_profiles', 'appointments.client_id', '=', 'client_profiles.id')
+                ->whereDate('appointment_datetime', $availableDate->available_date)
+                ->where('appointments.staff_id', $availableDate->staff_id)
+                ->get();
+    
+            $availableDate->appointments = $appointments;
+            return $availableDate;
+        });
+    
+        return response()->json(['available_dates' => $availableDates]);
+    }
+
 
 }
 
