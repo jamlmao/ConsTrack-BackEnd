@@ -1114,26 +1114,31 @@ class PController extends Controller
             }
         }
 
-        public function getTasksByCategory($project_id)
+
+
+       public function getTasksByCategory($project_id)
         {
             try {
                 // Fetch the project to get the total budget
                 $project = Project::findOrFail($project_id);
                 $projectTotalBudget = $project->totalBudget;
-        
+
                 // Fetch all categories related to the given project ID
                 $categories = Category::where('project_id', $project_id)->get();
-        
+
+                // Calculate the total allocated budget for all categories
+                $totalAllocatedBudget = $categories->sum('c_allocated_budget');
+
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'category_id', 'pt_completion_date']);
-        
+
                 // Initialize the result array
                 $totalAllocatedBudgetPerCategory = [];
-        
+
                 foreach ($categories as $category) {
                     $categoryTasks = $tasks->where('category_id', $category->id);
                     $categoryBudget = $category->c_allocated_budget;
-        
+
                     $totalAllocatedBudgetPerCategory[$category->category_name] = [
                         'tasks' => $categoryTasks->map(function ($task) {
                             return [
@@ -1143,13 +1148,13 @@ class PController extends Controller
                         })->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
                         'percentage' => $projectTotalBudget > 0 ? ($categoryBudget / $projectTotalBudget) * 100 : 0,
-                       
                     ];
                 }
-        
+
                 // Return the tasks grouped by category and total allocated budget per category in a JSON response
                 return response()->json([
-                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
+                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory,
+                    'totalAllocatedBudget' => $totalAllocatedBudget
                 ], 200);
             } catch (Exception $e) {
                 Log::error('Failed to fetch tasks by category: ' . $e->getMessage());
