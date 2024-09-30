@@ -860,6 +860,7 @@ class PController extends Controller
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get();
         
+                // Fetch all used resources
                 $usedResources = UsedResources::with('resource')->get();
                 Log::info('UsedResources Count after initialization: ' . $usedResources->count());
         
@@ -934,41 +935,31 @@ class PController extends Controller
                             return $isTaskMatch && $isBeforeToday;
                         });
         
-                     
-        
                         // Calculate previous cost for this task
                         $previousCostTask = $filteredResourcesTask->sum(function ($usedResource) use ($resources) {
                             if (isset($resources[$usedResource->resource_id])) {
                                 return $usedResource->resource_qty * $resources[$usedResource->resource_id]->unit_cost;
                             } else {
-                              
                                 return 0;
                             }
                         });
-        
-                      
         
                         // Calculate this period cost (resources used today) for this task
                         $thisPeriodResourcesTask = $usedResources->filter(function ($usedResource) use ($task, $resources) {
                             $resource = $resources->get($usedResource->resource_id);
                             $isTaskMatch = $resource && $resource->task_id == $task->id;
                             $isTodayOrAfter = $usedResource->created_at >= Carbon::today();
-                          
+        
                             return $isTaskMatch && $isTodayOrAfter;
                         });
-        
-                       
         
                         $thisPeriodCostTask = $thisPeriodResourcesTask->sum(function ($usedResource) use ($resources) {
                             if (isset($resources[$usedResource->resource_id])) {
                                 return $usedResource->resource->total_used_resources * $resources[$usedResource->resource_id]->unit_cost;
                             } else {
-                              
                                 return 0;
                             }
                         });
-        
-                       
         
                         // Calculate to date cost for this task
                         $toDateCostTask = $task->pt_allocated_budget - $previousCostTask + $thisPeriodCostTask;
@@ -987,44 +978,70 @@ class PController extends Controller
         
                     Log::info('Total usedResources Count: ' . $usedResources->count());
         
-                    $filteredResources = $usedResources->filter(function ($usedResource) {
-                        return $usedResource->created_at < Carbon::today();
+                    // Filter used resources for this category created before today
+                    $filteredResources = $usedResources->filter(function ($usedResource) use ($categoryId, $resources) {
+                        $resource = $resources->get($usedResource->resource_id);
+                        $task = $resource ? Task::find($resource->task_id) : null;
+                        
+                        // Log the resource and task details
+                        Log::info('Filtering Resource:', [
+                            'resource_id' => $usedResource->resource_id,
+                            'resource_exists' => $resource ? 'yes' : 'no',
+                            'task_id' => $task ? $task->id : 'null',
+                            'task_category_id' => $task ? $task->category_id : 'null',
+                            'category_match' => $task && $task->category_id == $categoryId ? 'yes' : 'no',
+                            'used_date' => $usedResource->created_at,
+                            'is_before_today' => $usedResource->created_at < Carbon::today() ? 'yes' : 'no'
+                        ]);
+                    
+                        return $task && $task->category_id == $categoryId && $usedResource->created_at < Carbon::today();
                     });
-        
-                    // Calculate previous cost, this period cost, and to date cost
+                    
+                    // Calculate previous cost for this category
                     $previousCost = $filteredResources->sum(function ($usedResource) use ($resources) {
                         if (isset($resources[$usedResource->resource_id])) {
-                            return $usedResource->resource_qty * $resources[$usedResource->resource_id]->unit_cost;
+                            $cost = $usedResource->resource_qty * $resources[$usedResource->resource_id]->unit_cost;
+                            
+                            return $cost;
                         } else {
-                            return 0;
-                        }
-                    });
-        
-                    Log::info('Previous Cost: ' . $previousCost);
-        
-                    $thisPeriodResources = $usedResources->filter(function ($usedResource) {
-                        return $usedResource->created_at >= Carbon::today();
-                    });
-        
-                    $thisPeriodCost = $thisPeriodResources->sum(function ($usedResource) use ($resources) {
-                     
-                        if (isset($resources[$usedResource->resource_id])) {
-                           
-                            return $usedResource->resource->total_used_resources * $resources[$usedResource->resource_id]->unit_cost;
-                        } else {
+                         
                           
                             return 0;
                         }
                     });
-
-                    $total = $previousCost + $thisPeriodCost;
-                    Log::info('total: ' . $total);
-                    $toDateCost = $categoryAllocatedBudget - $total;
+                    
+           
+                    Log::info('Previous Cost:', ['previousCost' => $previousCost]);
+        
+                    // Filter used resources for this category created today or after
+                    $thisPeriodResources = $usedResources->filter(function ($usedResource) use ($categoryId, $resources) {
+                        $resource = $resources->get($usedResource->resource_id);
+                        $task = $resource ? Task::find($resource->task_id) : null;
+                    
+                        return $task && $task->category_id == $categoryId && $usedResource->created_at >= Carbon::today();
+                    });
+                    
+                    // Calculate this period cost for this category
+                    $thisPeriodCost = $thisPeriodResources->sum(function ($usedResource) use ($resources) {
+                        if (isset($resources[$usedResource->resource_id])) {
+                            $cost = $usedResource->resource_qty * $resources[$usedResource->resource_id]->unit_cost;
+                    
+                    
+                            return $cost;
+                        } else {
+                          
+                          
+                            return 0;
+                        }
+                    });
+                    
+                    // Log the this period cost for debugging purposes
+                    Log::info('This Period Cost:', ['thisPeriodCost' => $thisPeriodCost]);
+        
+                    // Calculate to date cost for this category
+                    $toDateCost = $categoryAllocatedBudget - ($previousCost + $thisPeriodCost);
                     Log::info('This Date Cost: ' . $toDateCost);
-                    
-                    
-
-
+        
                     $categoryData = [
                         'category_id' => $categoryId,
                         'c_allocated_budget' => $categoryAllocatedBudget,
@@ -1107,9 +1124,6 @@ class PController extends Controller
                 // Fetch all categories related to the given project ID
                 $categories = Category::where('project_id', $project_id)->get();
         
-                // Calculate the total allocated budget for all categories
-                $totalAllocatedBudget = $categories->sum('c_allocated_budget');
-        
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get(['pt_status', 'category_id', 'pt_completion_date']);
         
@@ -1129,13 +1143,13 @@ class PController extends Controller
                         })->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
                         'percentage' => $projectTotalBudget > 0 ? ($categoryBudget / $projectTotalBudget) * 100 : 0,
+                       
                     ];
                 }
         
                 // Return the tasks grouped by category and total allocated budget per category in a JSON response
                 return response()->json([
-                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory,
-                    'totalAllocatedBudget' => $totalAllocatedBudget
+                    'totalAllocatedBudgetPerCategory' => $totalAllocatedBudgetPerCategory
                 ], 200);
             } catch (Exception $e) {
                 Log::error('Failed to fetch tasks by category: ' . $e->getMessage());
