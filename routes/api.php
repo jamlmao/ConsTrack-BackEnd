@@ -39,7 +39,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
  
-    Route::post('/updatetask/{task_id}', [TaskController::class, 'updateTask']);
+    Route::post('/updatetask/{task_id}', [TaskController::class, 'updateTaskv2']);
 
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
 
@@ -118,7 +118,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
     Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details
     Route::get('tasks/{task_id}/used-resources', [ResourcesController::class, 'getUsedResourcesForTask']);
-    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
+    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks3']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
 
