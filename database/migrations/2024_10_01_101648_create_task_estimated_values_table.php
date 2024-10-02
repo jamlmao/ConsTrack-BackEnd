@@ -11,11 +11,14 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('companies', function (Blueprint $table) {
+        Schema::create('task_estimated_values', function (Blueprint $table) {
             $table->id();
-            $table->string('company_name');
-            $table->string('company_logo')->nullable();
+            $table->unsignedBigInteger('task_id');
+            $table->decimal('estimated_resource_value', 10, 2);
             $table->timestamps();
+
+            // Foreign key constraint
+            $table->foreign('task_id')->references('id')->on('project_tasks')->onDelete('cascade');
         });
     }
 
@@ -26,6 +29,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('companies');
+        Schema::dropIfExists('task_estimated_values');
     }
 };

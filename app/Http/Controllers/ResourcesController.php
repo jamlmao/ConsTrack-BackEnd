@@ -34,32 +34,42 @@ class ResourcesController extends Controller
     {
         try {
             $task = Task::find($task_id);
-
+    
             if (!$task) {
                 return response()->json(['message' => 'Task not found'], 404);
             }
-
+    
             $category = Category::find($task->category_id);
             $category_name = $category->category_name;
-
+    
             // Fetch all resources associated with the given task ID
             $resources = Resources::where('task_id', $task_id)->get();
-
+    
             // Check if resources are found
             if ($resources->isEmpty()) {
                 return response()->json(['message' => 'No resources found for this task'], 404);
             }
-
+    
             // Calculate the left resources for each resource
             $resourcesWithLeftQty = $resources->map(function ($resource) {
                 $resource->left_qty = $resource->qty - $resource->total_used_resources;
                 return $resource;
             });
-
-            // Return the resources
+    
+            // Calculate the total used resources
+            $totalUsedResources = $task->resources->sum(function ($resource) {
+                return $resource['unit_cost'] * $resource['total_used_resources'];
+            });
+            Log::info('Total used resources: ' . $totalUsedResources);
+    
+            // Calculate the percentage based on total used resources
+            $task->percentage = $totalUsedResources >= $task->pt_allocated_budget ? 100 : ($totalUsedResources / $task->pt_allocated_budget) * 100;
+            Log::info('Task percentage: ' . $task->percentage);
+    
+            // Return the resources along with the task and category name
             return response()->json([
                 'resources' => $resourcesWithLeftQty,
-                'tasks' => $task,
+                'task' => $task,
                 'category_name' => $category_name,
             ], 200);
         } catch (Exception $e) {
@@ -68,65 +78,50 @@ class ResourcesController extends Controller
             return response()->json(['message' => 'Failed to fetch resources', 'error' => $e->getMessage()], 500);
         }
     }
-    public function useResourcesForWeek(Request $request, $task_id)
+
+
+
+
+
+
+
+    public function getUsedResourcesForTask($task_id)
     {
         try {
-            // Validate the request data
-            $validatedData = $request->validate([
-                'resources' => 'required|array',
-                'resources.*.resource_id' => 'required|integer|exists:resources,id',
-                'resources.*.used_qty' => 'required|integer|min:1',
-            ]);
-
-            // Fetch resources related to the task
-            $resources = Resources::where('task_id', $task_id)->get();
-
+            // Validate the task_id
+            if (!is_numeric($task_id)) {
+                return response()->json(['message' => 'Invalid task ID'], 400);
+            }
+    
+            // Fetch the used resources for the given task
+            $usedResources = DB::table('used_resources')
+                ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
+                ->join('staff_profiles', 'used_resources.staff_id', '=', 'staff_profiles.id')
+                ->where('resources.task_id', $task_id)
+                ->select(
+                    'used_resources.id',
+                    'resources.resource_name as used_resource_name',
+                    'used_resources.resource_qty',
+                    'used_resources.created_at',
+                    'used_resources.staff_id',
+                    'staff_profiles.first_name',
+                    'staff_profiles.last_name'
+                )
+                ->get();
+    
             // Check if resources are found
-            if ($resources->isEmpty()) {
+            if ($usedResources->isEmpty()) {
                 return response()->json(['message' => 'No resources found for this task'], 404);
             }
-
-            // Iterate over the resources and check if the available quantity is sufficient
-            foreach ($validatedData['resources'] as $resourceData) {
-                $resource = $resources->where('id', $resourceData['resource_id'])->first();
-                if ($resource) {
-                    // Check if the total used resources plus the new used quantity exceed the available quantity
-                    if ($resource->total_used_resources + $resourceData['used_qty'] > $resource->qty) {
-                        return response()->json(['message' => 'Insufficient quantity for: ' . $resource->resource_name], 400);
-                    }
-                } else {
-                    return response()->json(['message' => 'Resource ID: ' . ($resourceData['resource_id'] ?? 'Unknown') . ' not found'], 404);
-                }
-            }
-
-            // Iterate over the resources and update the used quantities
-            foreach ($validatedData['resources'] as $resourceData) {
-                $resource = $resources->where('id', $resourceData['resource_id'])->first();
-                if ($resource) {
-                    // Update the total used resources
-                    $resource->total_used_resources += $resourceData['used_qty'];
-                    $resource->save();
-
-                    // Insert into used_resources table
-                    UsedResources::create([
-                        'resource_id' => $resource->id,
-                        'used_resource_name' => $resource->resource_name,
-                        'resource_qty' => $resourceData['used_qty'],
-                        'used_at' => now(),
-                    ]);
-                }
-            }
-
-            // Return a success response
-            return response()->json(['message' => 'Resources updated successfully'], 200);
+    
+            // Return the used resources
+            return response()->json(['used_resources' => $usedResources], 200);
         } catch (Exception $e) {
             // Log the error and return a 500 response
-            Log::error('Failed to update resources: ' . $e->getMessage());
-            return response()->json(['message' => 'Failed to update resources', 'error' => $e->getMessage()], 500);
+            Log::error('Failed to fetch used resources: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch used resources', 'error' => $e->getMessage()], 500);
         }
     }
-
-
 }
     
 

@@ -17,17 +17,32 @@ use Carbon\Carbon;
 use App\Models\Project;
 use App\Models\Company;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Storage;
 use DateTime;
 
 class AController extends Controller
 {
     
+
+
+   
     public function createStaff(Request $request)
     {
         try {
+
+            $user = Auth::user();
+
+            if ($user->role !== 'admin' && !$user->staffProfile) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User does not have an associated staff profile'
+                ], 400);
+            }
+
+
             $validate = Validator::make($request->all(), 
             [
-                'name' => 'required|string|max:255',
+                'name' => 'required|string|max:255|unique:users',
                 'email' => 'required|string|email|max:255|unique:users',
                 'password' => [
                     'required',
@@ -47,10 +62,11 @@ class AController extends Controller
                 'zipcode' => 'required|string|max:10',
                 'extension_name' => 'nullable|string|max:255', 
                 'license_number' => 'nullable|unique:staff_profiles|string|max:255', 
-                'phone_number' => 'required|string|max:15',
-                'company_name' => 'required|string|max:255', 
+                'phone_number' => 'required|string|max:15|unique:staff_profiles',
+                'company_name' => 'required|string|max:255',
+                'company_logo' => 'nullable|string', // Add validation for base64 company_logo
             ]);
-    
+
             if ($validate->fails()){
                 return response()->json([
                     'status'=> false,
@@ -59,16 +75,44 @@ class AController extends Controller
                 ], 422);
             }
 
-            $company = Company::firstOrCreate(['company_name' => $request->company_name]);
-    
+            DB::beginTransaction(); // Start the transaction
+
+            // Handle company logo upload
+            $companyLogoPath = null;
+            if (!empty($request->company_logo)) {
+                $decodedImage = base64_decode($request->company_logo, true);
+                if ($decodedImage === false) {
+                    return response()->json(['message' => 'Invalid base64 image'], 400);
+                }
+                $uniqueId = uniqid();
+                $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '.png';
+                $isSaved = Storage::disk('public')->put('company_logos/' . $imageName, $decodedImage);
+
+                if (!$isSaved) {
+                    return response()->json(['message' => 'Failed to save company logo'], 500);
+                }
+
+                $companyLogoPath = 'storage/company_logos/' . $imageName;
+            }
+
+            $company = Company::firstOrCreate(
+                ['company_name' => $request->company_name]
+            );
+
+
+            if ($companyLogoPath) {
+                $company->company_logo = $companyLogoPath;
+                $company->save();
+            }
+
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
                 'role' => 'staff', // Default role set to staff
-                'status' => 'Deactivated' // not active or still not use 
+                'status' => 'Not Active' // not active or still not use 
             ]);
-    
+
             // Create staff profile
             $staffProfile = StaffProfile::create([
                 'user_id' => $user->id,
@@ -79,12 +123,12 @@ class AController extends Controller
                 'city' => $request->city,
                 'country' => $request->country,
                 'zipcode' => $request->zipcode,
-                'extension_name' => $request->extension_name??'', 
-                'license_number' => $request->license_number??'',
+                'extension_name' => $request->extension_name ?? '', 
+                'license_number' => $request->license_number ?? '',
                 'phone_number' => $request->phone_number,
                 'company_id' => $company->id, 
             ]);
-    
+
             // Log the creation of the staff profile
             AuditLog::create([
                 'user_id' => $user->id,
@@ -101,12 +145,14 @@ class AController extends Controller
                     'zipcode' => $request->zipcode,
                     'company_name' => $request->company_name,
                     'phone_number' => $request->phone_number,
-                    'extension_name' => $request->extension_name??'',
-                    'license_number' => $request->license_number??'',
-                    'company_name' => $company->company_name,
+                    'extension_name' => $request->extension_name ?? '',
+                    'license_number' => $request->license_number ?? '',
+                    'company_logo' => $companyLogoPath, // Add company logo path to the log
                 ]),
             ]);
-    
+
+            DB::commit(); // Commit the transaction
+
             return response()->json([
                 'status' => true,
                 'message' => 'Staff registered successfully',
@@ -114,6 +160,7 @@ class AController extends Controller
                 'staff_profile' => $staffProfile
             ], 201);
         } catch (\Throwable $th) {
+            DB::rollBack(); // Rollback the transaction in case of error
             return response()->json([
                 'status' => false,
                 'message' => $th->getMessage()
@@ -256,6 +303,90 @@ class AController extends Controller
         }
 
 
+
+
+        public function editClient(Request $request, $clientId)
+        {
+            $user = Auth::user();
+
+            if (!in_array($user->role, ['admin', 'staff'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+
+            if ($user->role !== 'admin' && !$user->staffProfile) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User does not have an associated staff profile'
+                ], 400);
+            }
+
+            $validatedData = $request->validate([
+                'name' => 'required|string|max:20',
+                'email' => 'required|string|email|max:100|unique:users,email,' . $clientId,
+                'first_name' => 'required|string|max:20',
+                'last_name' => 'required|string|max:20',
+                'sex' => 'required|in:M,F',
+                'address' => 'required|string|max:60',
+                'city' => 'required|string|max:60',
+                'country' => 'required|string|max:60',
+                'zipcode' => 'required|string|regex:/^\d{0,9}$/',
+                'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            ]);
+
+            try {
+                DB::transaction(function () use ($request, $user, $validatedData, $clientId) {
+                    $client = User::findOrFail($clientId);
+
+                    $oldValues = $client->only([
+                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
+                    ]);
+
+                    $client->update([
+                        'name' => $validatedData['name'],
+                        'email' => $validatedData['email'],
+                        'updated_by' => $user->id,
+                    ]);
+
+                    $client->ClientProfile()->update([
+                        'first_name' => $validatedData['first_name'],
+                        'last_name' => $validatedData['last_name'],
+                        'sex' => $validatedData['sex'],
+                        'address' => $validatedData['address'],
+                        'city' => $validatedData['city'],
+                        'country' => $validatedData['country'],
+                        'zipcode' => $validatedData['zipcode'],
+                        'phone_number' => $validatedData['phone_number'],
+                    ]);
+
+                    $newValues = $client->only([
+                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
+                    ]);
+
+                    AuditLog::create([
+                        'user_id' => $client->id,
+                        'editor_id' => auth()->user()->id,
+                        'action' => 'edit',
+                        'old_values' => json_encode($oldValues),
+                        'new_values' => json_encode($newValues),
+                    ]);
+                });
+
+                return response()->json([
+                    'message' => 'Client updated successfully',
+                    'client' => $client
+                ], 200);
+            } catch (\Throwable $th) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $th->getMessage()
+                ], 500);
+            }
+        }
+
+
         public function getClientsUnderSameCompany()
         {
             // Get the logged-in staff profile
@@ -297,6 +428,35 @@ class AController extends Controller
 
             return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
         }
+
+        public function getClientsUnderSameCompany2()
+        {
+            // Get the logged-in staff profile
+            $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+
+            if (!$staffProfile) {
+                return response()->json(['error' => 'Staff profile not found'], 404);
+            }
+
+            // Get the company ID from the staff profile
+            $companyId = $staffProfile->company_id;
+
+            // Get clients under the same company and their project statuses
+            $clients = DB::table('client_profiles')
+                ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
+                ->leftJoin('users', 'client_profiles.user_id', '=', 'users.id') // Join with users table
+                ->where('client_profiles.company_id', $companyId)
+                ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
+                ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
+                ->select('client_profiles.id') // Only select the client IDs
+                ->get();
+
+            // Count the number of clients
+            $clientCount = $clients->count();
+
+            return response()->json(['client_count' => $clientCount], 200);
+        }
+
 
 
        
@@ -638,7 +798,8 @@ class AController extends Controller
                         'zipcode' => $staffProfile->zipcode,
                         'phone_number' => $staffProfile->phone_number,
                         'company_id' => $staffProfile->company_id,
-                        'company_name' => $company ? $company->company_name : null, // Get company_name from company_id
+                        'company_name' => $company ? $company->company_name : null, 
+                        'company_logo' => $company ? $company->company_logo : null,
                         'extension_name' =>$this->getExtensionName($staffProfile->extension_name),
                         'license_number' => $staffProfile->license_number,
                     ];
@@ -659,6 +820,8 @@ class AController extends Controller
                         'phone_number' => $clientProfile->phone_number,
                         'company_id' => $clientProfile->company_id,
                         'company_name' => $company ? $company->company_name : null, 
+                        
+                        'company_logo' => $company ? $company->company_logo : null,
                     ];
                 }
             }
@@ -836,6 +999,24 @@ class AController extends Controller
         }
     }
 
+
+
+    public function fetchAllCompanies()
+    {
+        try{
+            $companies =Company::all();
+
+            return response()->json(['companies'=>$companies],200);
+        }catch(Exception $e){
+            Log::error('Failed to fetch all companies: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to fetch all companies', 'error' => $e->getMessage()], 500);
+        }
+        
+
+
+    }
+
+
     public function getAllUsers()
     {
         $user = Auth::user();
@@ -886,5 +1067,10 @@ class AController extends Controller
             return response()->json(['message' => 'Failed to fetch all users', 'error' => $e->getMessage()], 500);
         }
     }
+
+
+
+
+
 
 }

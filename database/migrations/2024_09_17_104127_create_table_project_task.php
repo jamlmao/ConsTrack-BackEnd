@@ -23,13 +23,6 @@ return new class extends Migration
             $table->string('pt_photo_task')->nullable();
             $table->string('pt_file_task')->nullable();
             $table->integer('pt_allocated_budget');
-            $table->string('update_img')->nullable(); // Add the new column
-            $table->string('update_file')->nullable();
-            $table->string('week1_img')->nullable();
-            $table->string('week2_img')->nullable();
-            $table->string('week3_img')->nullable();
-            $table->string('week4_img')->nullable();
-            $table->string('week5_img')->nullable();
             $table->timestamps();
 
 

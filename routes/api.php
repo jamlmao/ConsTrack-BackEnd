@@ -39,7 +39,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/addproject', [PController::class, 'addproject']);
     Route::post('/addtask/{project_id}', [PController::class, 'addTask']);
  
-    Route::post('/updatetask/{task_id}', [PController::class, 'updateTask']);
+    Route::post('/updatetask/{task_id}', [TaskController::class, 'updateTaskv2']);
 
     Route::put('projects/{projectId}/update-status', [PController::class, 'updateProjectStatus']);
 
@@ -82,6 +82,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/projectsY', [PController::class, 'getProjectPerYear']);
     Route::get('/staff/projects', [PController::class, 'getProjectsForStaff']);
     Route::get('/clients', [AController::class, 'getClientsUnderSameCompany']);
+    Route::get('/clientsCount', [AController::class, 'getClientsUnderSameCompany2']);
+
     Route::get('/clientsA', [AController::class, 'getAllClientsForAdmin']); // not used i think 
     Route::get('/user/details', [AController::class, 'getLoggedInUserNameAndId']);
     
@@ -101,16 +103,27 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('clients/{clientId}/projects', [PController::class, 'getClientProjects']);
 
 
+    Route::put('/clients/{clientId}', [AController::class, 'editClient']); 
+    Route::put('/Etasks/{taskId}', [PController::class, 'editTask']);
+    Route::put('/tasks/{taskId}/resources/{resourceId}', [PController::class, 'editTaskResources']);
+    Route::put('/editCategory/{category_id}', [CategoryController::class, 'editCategory']);
 
 
+
+    Route::post('/tasks/complete', [TaskController::class, 'CompleteTask']);
     Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
-
+    Route::get('/companies',[AController::class,"fetchAllCompanies"]);
     Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
     Route::get('categories/{category_id}/tasks', [TaskController::class, 'getTasksByCategoryId']); // fetch all task under that category
     Route::get('tasks/{task_id}/resources', [ResourcesController::class, 'getResourcesByTaskId']); //fetch all resources under that task and task details
-    Route::post('tasks/{task_id}/use-resources', [ResourcesController::class, 'useResourcesForWeek']);
-    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks2']);
+    Route::get('tasks/{task_id}/used-resources', [ResourcesController::class, 'getUsedResourcesForTask']);
+    Route::get('/sortedTask2/{project_id}', [PController::class, 'getSortedProjectTasks3']);
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
+
+
+
+    Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
+    Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);
 });

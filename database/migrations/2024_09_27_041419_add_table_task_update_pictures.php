@@ -11,17 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('used_resources', function (Blueprint $table) {
+        Schema::create('task_update_pictures', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('resource_id');
+            $table->unsignedBigInteger('task_id');
             $table->unsignedBigInteger('staff_id');
-            $table->string('used_resource_name');
-            $table->integer('resource_qty');
+            $table->string('tup_photo');
             $table->timestamps();
 
-
+            $table->foreign('task_id')->references('id')->on('project_tasks')->onDelete('cascade');
             $table->foreign('staff_id')->references('id')->on('staff_profiles')->onDelete('cascade');
-            $table->foreign('resource_id')->references('id')->on('resources')->onDelete('cascade');
         });
     }
 
@@ -30,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('used_resources');
+        Schema::dropIfExists('task_update_pictures');
     }
 };

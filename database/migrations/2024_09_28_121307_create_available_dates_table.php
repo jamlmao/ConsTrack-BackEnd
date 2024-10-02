@@ -11,21 +11,16 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('companies', function (Blueprint $table) {
+        Schema::create('available_dates', function (Blueprint $table) {
             $table->id();
-            $table->string('company_name');
-            $table->string('company_logo')->nullable();
+            $table->foreignId('staff_id')->constrained('staff_profiles')->onDelete('cascade');
+            $table->date('available_date');
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     *
-     * @return void
-     */
     public function down()
     {
-        Schema::dropIfExists('companies');
+        Schema::dropIfExists('available_dates');
     }
 };
