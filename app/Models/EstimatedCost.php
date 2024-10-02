@@ -13,6 +13,7 @@ class EstimatedCost extends Model
     protected $fillable = [
         'task_id',
         'estimated_resource_value',
+        'description'
     ];
 
     // Define the relationship with the Task model

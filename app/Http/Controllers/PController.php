@@ -89,28 +89,34 @@ class PController extends Controller
             // Decode and save the base64 encoded images and PDF
             $fieldsToProcess = ['pj_image', 'pj_image1', 'pj_image2', 'pj_pdf'];
             foreach ($fieldsToProcess as $field) {
-                if (!empty($validatedData[$field])) {
+                if (isset($validatedData[$field]) && !empty($validatedData[$field])) {
                     $decodedFile = base64_decode($validatedData[$field], true);
                     if ($decodedFile === false) {
                         Log::error("Invalid base64 $field");
                         return response()->json(['message' => "Invalid base64 $field"], 400);
                     }
-    
+
                     $extension = $field === 'pj_pdf' ? 'pdf' : 'png';
-                    $fileName = time() . ".$extension";
+                    $fileName = uniqid() . "_" . time() . ".$extension";
                     $directory = $field === 'pj_pdf' ? 'pdfs/projects/' : 'photos/projects/';
                     $isSaved = Storage::disk('public')->put($directory . $fileName, $decodedFile);
-    
+
                     if (!$isSaved) {
                         Log::error("Failed to save $field");
                         return response()->json(['message' => "Failed to save $field"], 500);
                     }
-    
+
                     $filePath = asset("storage/$directory" . $fileName);
                     $validatedData[$field] = $filePath; 
+                } else {
+                    unset($validatedData[$field]); // Ensure the field is not in the validatedData array if not provided
                 }
             }
-    
+
+            // Explicitly remove pj_pdf if it is not provided
+            if (!isset($validatedData['pj_pdf']) || empty($validatedData['pj_pdf'])) {
+                unset($validatedData['pj_pdf']);
+            }
             // Ensure the staff_id exists in the staff_profiles table
             $staffProfile = $user->staffProfile;
             if (!$staffProfile) {
@@ -396,15 +402,14 @@ class PController extends Controller
                  'resources' => 'required|array',
                  'resources.*.resource_name' => 'required|string',
                  'resources.*.qty' => 'required|integer',
-                 'resources.*.unit_cost' => 'required|numeric',
                  'category_id' => 'required|exists:categories,id', // Validate category_id
                  'pt_total_budget' => 'required|numeric', // Total budget for the task
              ]);
      
-             // Add the project_id to the validated data
+             $resources = $validatedData['resources'];
+     
              $validatedData['project_id'] = $project_id;
      
-             // Fetch the project's total budget and c_allocated_budget
              $project = Project::findOrFail($project_id);
              $totalBudget = $project->totalBudget;
              $cAllocatedBudget = $project->c_allocated_budget;
@@ -412,7 +417,6 @@ class PController extends Controller
              $staffProfile = StaffProfile::findOrFail($project->staff_id);
              $clientProfile = ClientProfile::findOrFail($project->client_id);
      
-             // Get the user IDs from the profiles
              $staffUserId = $staffProfile->user_id;
              $clientUserId = $clientProfile->user_id;
      
@@ -422,14 +426,6 @@ class PController extends Controller
              // Check if the total budget and total allocated budget are equal
              if ($totalBudget == $totalAllocatedBudget) {
                  return response()->json(['message' => 'Cannot add task: total budget and total allocated budget are equal'], 400);
-             }
-     
-             // Calculate the total resource cost
-             $resources = $validatedData['resources'];
-             $totalResourceCost = 0;
-     
-             foreach ($resources as $resource) {
-                 $totalResourceCost += $resource['qty'] * $resource['unit_cost'];
              }
      
              // Check if adding the new task's budget exceeds the total budget
@@ -449,12 +445,12 @@ class PController extends Controller
                  return response()->json(['message' => 'Cannot add task: allocated budget exceeds the category allocated budget'], 400);
              }
      
-             // Check if the completion date has passed
+             // Check if the completion date has passed with a one-day clearance
              $completionDate = Carbon::parse($validatedData['pt_completion_date']);
              $currentDate = Carbon::now();
      
-             if ($completionDate->isPast()) {
-                 $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+             if ($completionDate->diffInDays($currentDate, false) < -1) {
+                 $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date is more than one day in the past
              } else {
                  $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
              }
@@ -466,7 +462,8 @@ class PController extends Controller
              // Add resources to the database
              foreach ($resources as $resource) {
                  $resource['task_id'] = $task->id;
-                 $resource['total_cost'] = $resource['qty'] * $resource['unit_cost'];
+                 $resource['total_cost'] = $validatedData['pt_total_budget']; // Use pt_total_budget for total_cost
+                 $resource['unit_cost'] = 0; // Set unit_cost to 0
                  $resource['total_used_resources'] = 0;
                  Resources::create($resource);
              }
@@ -484,8 +481,8 @@ class PController extends Controller
                  Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
              }
      
-             // Check if the task is past the completion date
-             if ($completionDate->isPast()) {
+             // Check if the task is past the completion date with a one-day clearance
+             if ($completionDate->diffInDays($currentDate, false) < -1) {
                  $validatedData['pt_status'] = 'D'; // Mark as due
                  Mail::to($clientEmail)->send(new TaskDue($task));
              }
@@ -1012,14 +1009,6 @@ class PController extends Controller
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get();
         
-                // Fetch all used resources
-                $usedResources = UsedResources::with('resource')->get();
-                Log::info('UsedResources Count after initialization: ' . $usedResources->count());
-        
-                $usedResources->each(function ($usedResource) {
-                    Log::info('UsedResource - created_at: ' . $usedResource->created_at . ', resource_id: ' . $usedResource->resource_id . ', total_used_resources: ' . $usedResource->resource->total_used_resources);
-                });
-        
                 $resources = Resources::all()->keyBy('id');
         
                 // Get unique category names from the categories
@@ -1035,7 +1024,6 @@ class PController extends Controller
         
                 // Calculate the total allocated budget per category
                 $totalAllocatedBudgetPerCategory = [];
-                $totalBudget = $tasks->sum('pt_allocated_budget');
         
                 foreach ($customOrder as $categoryName) {
                     $category = $categories->firstWhere('category_name', $categoryName);
@@ -1050,135 +1038,63 @@ class PController extends Controller
                     $categoryPercentage = $categoryAllocatedBudget > 0 ? ($categoryBudget / $categoryAllocatedBudget) * 100 : 0;
         
                     // Calculate the percentage for each task based on the status and budget
-                    $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($categoryAllocatedBudget, $totalBudget, $resources, $usedResources) {
-                        // Fetch resources for the task from the used_resources table and join with resources table
-                        $taskResources = DB::table('used_resources')
-                            ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
-                            ->where('resources.task_id', $task->id)
-                            ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'resources.unit_cost', 'used_resources.created_at']);
-        
-                        $task->resources = $taskResources->map(function ($resource) {
-                            return [
-                                'id' => $resource->resource_id,
-                                'name' => $resource->resource_name,
-                                'total_used_resources' => $resource->total_used_resources,
-                                'qty' => $resource->resource_qty,
-                                'unit_cost' => $resource->unit_cost,
-                                'used_date' => $resource->created_at
-                            ];
-                        });
-        
+                    $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($resources) {
                         // Fetch the estimated resource values for the task
                         $estimatedCosts = EstimatedCost::where('task_id', $task->id)->get();
                         $totalEstimatedResourceValue = $estimatedCosts->sum('estimated_resource_value');
         
-                        // Calculate the total used resources for the task
-                        $totalUsedResources = $task->resources->sum(function ($resource) use ($totalEstimatedResourceValue) {
-                            return $totalEstimatedResourceValue;
-                        });
-                        Log::info('Total used resources: ' . $totalUsedResources);
-        
-                        // Calculate the percentage based on total used resources
                         $task->percentage = $totalEstimatedResourceValue >= $task->pt_allocated_budget ? 100 : ($totalEstimatedResourceValue / $task->pt_allocated_budget) * 100;
                         Log::info('Task percentage: ' . $task->percentage);
         
-                        // Filter used resources for this task created before today
-                        $filteredResourcesTask = $usedResources->filter(function ($usedResource) use ($task, $resources) {
-                            $resource = $resources->get($usedResource->resource_id);
-                            $isTaskMatch = $resource && $resource->task_id == $task->id;
-                            $isBeforeToday = $usedResource->created_at < Carbon::today();
+                        $currentWeekStartTask = Carbon::now()->startOfWeek(Carbon::SUNDAY);
         
-                            return $isTaskMatch && $isBeforeToday;
-                        });
+                        $previousCostTask = EstimatedCost::where('task_id', $task->id)
+                            ->where('created_at', '<', $currentWeekStartTask)
+                            ->sum('estimated_resource_value');
         
-                        // Calculate previous cost for this task
-                        $previousCostTask = $filteredResourcesTask->sum(function ($usedResource) use ($resources) {
-                            $resource = $resources->get($usedResource->resource_id);
-                            $estimatedCost = EstimatedCost::where('task_id', $resource->task_id)->first();
-                            return $estimatedCost ? $estimatedCost->estimated_resource_value : 0;
-                        });
-        
-                        // Calculate this period cost (resources used today) for this task
-                        $thisPeriodResourcesTask = $usedResources->filter(function ($usedResource) use ($task, $resources) {
-                            $resource = $resources->get($usedResource->resource_id);
-                            $isTaskMatch = $resource && $resource->task_id == $task->id;
-                            $isTodayOrAfter = $usedResource->created_at >= Carbon::today();
-        
-                            return $isTaskMatch && $isTodayOrAfter;
-                        });
-        
-                        $thisPeriodCostTask = $thisPeriodResourcesTask->sum(function ($usedResource) use ($resources) {
-                            $resource = $resources->get($usedResource->resource_id);
-                            $estimatedCost = EstimatedCost::where('task_id', $resource->task_id)->first();
-                            return $estimatedCost ? $estimatedCost->estimated_resource_value : 0;
-                        });
+                        $thisPeriodCostTask = EstimatedCost::where('task_id', $task->id)
+                            ->where('created_at', '>=', Carbon::today())
+                            ->sum('estimated_resource_value');
         
                         // Calculate to date cost for this task
-                        $toDateCostTask = $task->pt_allocated_budget - $previousCostTask + $thisPeriodCostTask;
+                        $toDateCostTask = $previousCostTask + $thisPeriodCostTask;
         
                         // Add the calculated costs to the task
                         $task->previousCostTask = $previousCostTask;
                         $task->thisPeriodCostTask = $thisPeriodCostTask;
                         $task->toDateCostTask = $toDateCostTask;
         
+                        // Remove unwanted fields
+                        unset($task->pt_status, $task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at, $task->resources);
+        
                         return $task;
                     });
         
-                    $totalUsedResources = $categoryTasksWithPercentage->reduce(function ($carry, $task) {
-                        return $carry + $task->resources->sum('total_used_resources');
-                    }, 0);
-        
-                    Log::info('Total usedResources Count: ' . $usedResources->count());
-        
-                    // Filter used resources for this category created before today
-                    $filteredResources = $usedResources->filter(function ($usedResource) use ($categoryId, $resources) {
-                        $resource = $resources->get($usedResource->resource_id);
-                        $task = $resource ? Task::find($resource->task_id) : null;
-        
-                        // Log the resource and task details
-                        Log::info('Filtering Resource:', [
-                            'resource_id' => $usedResource->resource_id,
-                            'resource_exists' => $resource ? 'yes' : 'no',
-                            'task_id' => $task ? $task->id : 'null',
-                            'task_category_id' => $task ? $task->category_id : 'null',
-                            'category_match' => $task && $task->category_id == $categoryId ? 'yes' : 'no',
-                            'used_date' => $usedResource->created_at,
-                            'is_before_today' => $usedResource->created_at < Carbon::today() ? 'yes' : 'no'
-                        ]);
-        
-                        return $task && $task->category_id == $categoryId && $usedResource->created_at < Carbon::today();
-                    });
-        
-                
-        
-                    // Filter used resources for this category created today or after
                     $currentWeekStart = Carbon::now()->startOfWeek(Carbon::SUNDAY);
-
+        
                     // Calculate the previous cost for all values before the start of the current week
                     $previousCost = EstimatedCost::whereIn('task_id', function ($query) use ($categoryId) {
-                                            $query->select('id')
-                                                  ->from('project_tasks')
-                                                  ->where('category_id', $categoryId);
-                                        })->where('created_at', '<', $currentWeekStart)->sum('estimated_resource_value');
-                                        
+                        $query->select('id')
+                            ->from('project_tasks')
+                            ->where('category_id', $categoryId);
+                    })->where('created_at', '<', $currentWeekStart)->sum('estimated_resource_value');
+        
                     Log::info('Previous Cost:', ['previousCost' => $previousCost]);
-                    
-               
-                    
+        
                     // Calculate this period cost for this category (today or after)
                     $thisPeriodCost = EstimatedCost::whereIn('task_id', function ($query) use ($categoryId) {
                         $query->select('id')
-                              ->from('project_tasks')
-                              ->where('category_id', $categoryId);
+                            ->from('project_tasks')
+                            ->where('category_id', $categoryId);
                     })->whereBetween('created_at', [
                         $currentWeekStart,
                         Carbon::now()
                     ])->sum('estimated_resource_value');
-                    
+        
                     Log::info('This Period Cost:', ['thisPeriodCost' => $thisPeriodCost]);
-                    
+        
                     // Calculate to date cost for this category
-                    $toDateCost =  $previousCost + $thisPeriodCost;
+                    $toDateCost = $previousCost + $thisPeriodCost;
                     Log::info('This Date Cost: ' . $toDateCost);
         
                     $categoryData = [
@@ -1186,7 +1102,6 @@ class PController extends Controller
                         'c_allocated_budget' => $categoryAllocatedBudget,
                         'tasks' => $categoryTasksWithPercentage->values()->all(),
                         'totalAllocatedBudget' => $categoryBudget,
-                        'totalUsedResources' => $totalUsedResources,
                         'previousCost' => $previousCost,
                         'thisPeriodCost' => $thisPeriodCost,
                         'toDateCost' => $toDateCost
@@ -1213,8 +1128,7 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
-
-
+        
 
 
         

@@ -111,7 +111,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
 
 
     Route::post('/tasks/complete', [TaskController::class, 'CompleteTask']);
-    Route::post('/addtask2/{project_id}', [PController::class, 'addTaskv2']);
+    Route::post('/addtask2/{project_id}', [PController::class, 'addTask']);
     Route::post('/addCategory/{project_id}', [PController::class, 'addCategory']);
     Route::get('/companies',[AController::class,"fetchAllCompanies"]);
     Route::get('categories/{project_id}', [CategoryController::class, 'getCategoriesByProjectId']);
@@ -122,7 +122,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/tasksBycategory/{project_id}', [PController::class, 'getTasksByCategory']);
     Route::get('/taskImages/{task_id}', [TaskController::class, 'getTaskImages']);
 
-
+    Route::get('/projects/{projectId}/tasks', [TaskController::class, 'getAllProjectTasks']);
 
     Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
     Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);

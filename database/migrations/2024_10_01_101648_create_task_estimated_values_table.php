@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('task_id');
             $table->decimal('estimated_resource_value', 10, 2);
+            $table->string('description');
             $table->timestamps();
 
             // Foreign key constraint
