@@ -18,4 +18,5 @@ class TaskUpdatePictures extends Model
         return $this->belongsTo(ProjectTask::class, 'task_id');
     }
 
+    
 }

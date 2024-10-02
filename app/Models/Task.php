@@ -44,4 +44,19 @@ class Task extends Model
     {
         return $this->belongsTo(Category::class, 'category_id');
     }
+
+    public function taskUpdatePictures()
+    {
+        return $this->hasMany(TaskUpdatePictures::class);
+    }
+
+
+
+
 }
+
+
+
+
+
+

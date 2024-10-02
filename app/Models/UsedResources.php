@@ -16,8 +16,8 @@ class UsedResources extends Model
         'staff_id'
     ];
 
-    public function resources()
+    public function resource()
     {
-        return $this->belongsTo(Resources::class);
+        return $this->belongsTo(Resources::class, 'resource_id');
     }
 }
