@@ -56,21 +56,22 @@ class ResourcesController extends Controller
                 return $resource;
             });
     
-            // Calculate the total used resources
-            $totalUsedResources = $task->resources->sum(function ($resource) {
-                return $resource['unit_cost'] * $resource['total_used_resources'];
-            });
-            Log::info('Total used resources: ' . $totalUsedResources);
-    
-            // Calculate the percentage based on total used resources
-            $task->percentage = $totalUsedResources >= $task->pt_allocated_budget ? 100 : ($totalUsedResources / $task->pt_allocated_budget) * 100;
+            // Fetch the sum of estimated_resource_value from task_estimated_values table
+            $estimatedResourceValueSum = DB::table('task_estimated_values')
+                ->where('task_id', $task_id)
+                ->sum('estimated_resource_value');
+            Log::info('Estimated resource value sum: ' . $estimatedResourceValueSum);
+            $estimatedResourceValueSum = intval($estimatedResourceValueSum);
+            // Calculate the percentage based on the estimated resource value sum
+            $task->percentage = $estimatedResourceValueSum >= $task->pt_allocated_budget ? 100 : ($estimatedResourceValueSum / $task->pt_allocated_budget) * 100;
             Log::info('Task percentage: ' . $task->percentage);
     
-            // Return the resources along with the task and category name
+            // Return the resources along with the task, category name, and estimated resource value sum
             return response()->json([
                 'resources' => $resourcesWithLeftQty,
                 'task' => $task,
                 'category_name' => $category_name,
+                'estimated_resource_value_sum' => $estimatedResourceValueSum,
             ], 200);
         } catch (Exception $e) {
             // Log the error and return a 500 response
@@ -78,7 +79,6 @@ class ResourcesController extends Controller
             return response()->json(['message' => 'Failed to fetch resources', 'error' => $e->getMessage()], 500);
         }
     }
-
 
 
 

@@ -251,114 +251,133 @@ class TaskController extends Controller
 
     
 
-        public function getTaskImages($taskId)
-        {
-            try {
-                // Find the task by ID
-                $task = Task::findOrFail($taskId);
-                Log::info('Task found: ' . $taskId);
 
-                // Fetch images and additional details from the task_update_pictures table
-                $taskUpdatePictures = DB::table('task_update_pictures')
-                    ->leftJoin('resources', 'task_update_pictures.task_id', '=', 'resources.task_id')
-                    ->leftJoin('used_resources', 'resources.id', '=', 'used_resources.resource_id')
-                    ->leftJoin('staff_profiles', 'task_update_pictures.staff_id', '=', 'staff_profiles.id')
-                    ->leftJoin('task_estimated_values', 'task_update_pictures.task_id', '=', 'task_estimated_values.task_id')
-                    ->where('task_update_pictures.task_id', $taskId)
-                    ->get([
-                        'task_update_pictures.tup_photo', 
-                        'task_update_pictures.created_at', 
-                        'task_estimated_values.description', 
-                        'task_estimated_values.estimated_resource_value', // Include estimated_resource_value
-                        'used_resources.resource_qty', 
-                        'used_resources.used_resource_name as used_resource_name', 
-                        'staff_profiles.first_name', 
-                        'staff_profiles.last_name'
-                    ]);
+    public function getTaskImages($taskId)
+{
+    try {
+        // Find the task by ID
+        $task = Task::findOrFail($taskId);
+        Log::info('Task found: ' . $taskId);
 
-                // Initialize an array to store images and resources grouped by their upload dates
-                $imagesByDate = [];
+        // Fetch images and additional details from the task_update_pictures table
+        $taskUpdatePictures = DB::table('task_update_pictures')
+            ->leftJoin('resources', 'task_update_pictures.task_id', '=', 'resources.task_id')
+            ->leftJoin('used_resources', 'resources.id', '=', 'used_resources.resource_id')
+            ->leftJoin('staff_profiles', 'task_update_pictures.staff_id', '=', 'staff_profiles.id')
+            ->leftJoin('task_estimated_values', function($join) {
+                $join->on('task_update_pictures.task_id', '=', 'task_estimated_values.task_id')
+                     ->on('task_update_pictures.created_at', '=', 'task_estimated_values.created_at');
+            })
+            ->where('task_update_pictures.task_id', $taskId)
+            ->get([
+                'task_update_pictures.tup_photo', 
+                'task_update_pictures.created_at', 
+                'task_estimated_values.description', 
+                'task_estimated_values.estimated_resource_value', // Include estimated_resource_value
+                'used_resources.resource_qty', 
+                'used_resources.used_resource_name as used_resource_name', 
+                'staff_profiles.first_name', 
+                'staff_profiles.last_name'
+            ]);
 
-                // Use a set to track unique images
-                $uniqueImages = [];
+        // Initialize an array to store images and resources grouped by their upload dates
+        $imagesByDate = [];
 
-                // Get the task start date
-                $taskStartDate = \Carbon\Carbon::parse($task->created_at);
+        // Use a set to track unique images
+        $uniqueImages = [];
 
-                // Iterate over each record and group images by their upload date
-                foreach ($taskUpdatePictures as $picture) {
-                    $uploadDate = \Carbon\Carbon::parse($picture->created_at);
-                    $dayCount = $uploadDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
-                    $formattedDate = $uploadDate->format('Y-m-d');
+        // Get the task start date
+        $taskStartDate = \Carbon\Carbon::parse($task->created_at);
 
-                    if (!isset($imagesByDate[$formattedDate])) {
-                        $imagesByDate[$formattedDate] = [
-                            'day' => 'Day ' . $dayCount,
-                            'uploaded_at' => $formattedDate,
-                            'images' => [],
-                            'resources' => []
-                        ];
-                    }
+        // Iterate over each record and group images by their upload date
+        foreach ($taskUpdatePictures as $picture) {
+            $uploadDate = \Carbon\Carbon::parse($picture->created_at);
+            $dayCount = $uploadDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
+            $formattedDate = $uploadDate->format('Y-m-d');
 
-                    // Add image to the set to ensure uniqueness
-                    if (!in_array($picture->tup_photo, $uniqueImages)) {
-                        $uniqueImages[] = $picture->tup_photo;
-                        $imagesByDate[$formattedDate]['images'][] = $picture->tup_photo;
-                    }
-                }
+            Log::info('Processing picture for date: ' . $formattedDate);
+            Log::info('Description: ' . $picture->description);
+            Log::info('Used Budget: ' . $picture->estimated_resource_value);
+            Log::info('Staff Name: ' . $picture->first_name . ' ' . $picture->last_name);
 
-                // Fetch resources that don't have a matching image upload date
-                $resources = DB::table('used_resources')
-                    ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
-                    ->where('resources.task_id', $taskId)
-                    ->get([
-                        'used_resources.resource_qty', 
-                        'used_resources.used_resource_name as used_resource_name', 
-                        'used_resources.created_at'
-                    ]);
-
-                // Iterate over each resource and group them by their upload date
-                foreach ($resources as $resource) {
-                    $resourceDate = \Carbon\Carbon::parse($resource->created_at);
-                    $dayCount = $resourceDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
-                    $formattedDate = $resourceDate->format('Y-m-d');
-
-                    if (!isset($imagesByDate[$formattedDate])) {
-                        $imagesByDate[$formattedDate] = [
-                            'day' => 'Day ' . $dayCount,
-                            'uploaded_at' => $formattedDate,
-                            'images' => [],
-                            'resources' => []
-                        ];
-                    }
-
-                    $resourceKey = $resource->used_resource_name . '-' . $resource->resource_qty;
-                    if (!array_key_exists($resourceKey, $imagesByDate[$formattedDate]['resources'])) {
-                        $imagesByDate[$formattedDate]['resources'][$resourceKey] = [
-                            'name' => $resource->used_resource_name,
-                            'qty' => $resource->resource_qty
-                        ];
-                    }
-                }
-
-                // Convert the associative array to a numeric array
-                $images = array_values($imagesByDate);
-
-                // Prepare the response data
-                $responseData = [
-                    'images' => $images,
-                    'description' => $taskUpdatePictures->first()->description,
-                    'used_budget' => $taskUpdatePictures->first()->estimated_resource_value, // Include estimated_resource_value
-                    'staff_name' => $taskUpdatePictures->first()->first_name . ' ' . $taskUpdatePictures->first()->last_name
+            if (!isset($imagesByDate[$formattedDate])) {
+                $imagesByDate[$formattedDate] = [
+                    'day' => 'Day ' . $dayCount,
+                    'uploaded_at' => $formattedDate,
+                    'images' => [],
+                    'resources' => [],
+                    'description' => $picture->description,
+                    'used_budget' => $picture->estimated_resource_value,
+                    'staff_name' => $picture->first_name . ' ' . $picture->last_name
                 ];
+            }
 
-                // Return the response with the images grouped by their upload dates
-                return response()->json(['data' => $responseData], 200);
-            } catch (\Exception $e) {
-                Log::error('Error fetching images for task ' . $taskId . ': ' . $e->getMessage());
-                return response()->json(['error' => 'An error occurred while fetching the images'], 500);
+            // Add image to the set to ensure uniqueness
+            if (!in_array($picture->tup_photo, $uniqueImages)) {
+                $uniqueImages[] = $picture->tup_photo;
+                $imagesByDate[$formattedDate]['images'][] = $picture->tup_photo;
             }
         }
+
+        // Fetch resources that don't have a matching image upload date
+        $resources = DB::table('used_resources')
+            ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
+            ->where('resources.task_id', $taskId)
+            ->get([
+                'used_resources.resource_qty', 
+                'used_resources.used_resource_name as used_resource_name', 
+                'used_resources.created_at'
+            ]);
+
+        // Iterate over each resource and group them by their upload date
+        foreach ($resources as $resource) {
+            $resourceDate = \Carbon\Carbon::parse($resource->created_at);
+            $dayCount = $resourceDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
+            $formattedDate = $resourceDate->format('Y-m-d');
+
+            Log::info('Processing resource for date: ' . $formattedDate);
+            Log::info('Resource Name: ' . $resource->used_resource_name);
+            Log::info('Resource Quantity: ' . $resource->resource_qty);
+
+            if (!isset($imagesByDate[$formattedDate])) {
+                $imagesByDate[$formattedDate] = [
+                    'day' => 'Day ' . $dayCount,
+                    'uploaded_at' => $formattedDate,
+                    'images' => [],
+                    'resources' => [],
+                    'description' => null,
+                    'used_budget' => null,
+                    'staff_name' => null
+                ];
+            }
+
+            $resourceKey = $resource->used_resource_name . '-' . $resource->resource_qty;
+            if (!array_key_exists($resourceKey, $imagesByDate[$formattedDate]['resources'])) {
+                $imagesByDate[$formattedDate]['resources'][$resourceKey] = [
+                    'name' => $resource->used_resource_name,
+                    'qty' => $resource->resource_qty
+                ];
+            }
+        }
+
+        // Convert the associative array to a numeric array
+        $images = array_values($imagesByDate);
+
+        // Log the final structure of imagesByDate
+        Log::info('Final imagesByDate structure: ' . json_encode($imagesByDate));
+
+        // Prepare the response data
+        $responseData = [
+            'images' => $images
+        ];
+
+        // Return the response with the images grouped by their upload dates
+        return response()->json(['data' => $responseData], 200);
+    } catch (\Exception $e) {
+        Log::error('Error fetching images for task ' . $taskId . ': ' . $e->getMessage());
+        return response()->json(['error' => 'An error occurred while fetching the images'], 500);
+    }
+}
 
 
 
@@ -435,6 +454,7 @@ class TaskController extends Controller
         }
 
 
+ 
         public function updateTaskv2(Request $request, $taskId)
         {
             $request->validate([
@@ -446,28 +466,28 @@ class TaskController extends Controller
                 'resources.*.used_qty' => 'nullable|integer|min:1',
                 'estimated_resource_value' => 'nullable|numeric|min:0', // Add validation for estimated_resource_value as a single input
             ]);
-
+        
             try {
                 DB::beginTransaction(); // Start the transaction    
-
+        
                 // Find the task by ID
                 $task = Task::findOrFail($taskId);
                 Log::info('Task found: ' . $taskId);
-
+        
                 // Get the staff_id from the logged-in user
                 $user = auth()->user();
                 $userId = $user->id;
                 Log::info('Logged-in user user_id: ' . $userId);
-
+        
                 // Retrieve the staff_id from the StaffProfile model using the user_id
                 $staffProfile = StaffProfile::where('user_id', $userId)->first();
                 if (!$staffProfile) {
                     return response()->json(['message' => 'Staff profile not found for the logged-in user'], 404);
                 }
-
+        
                 $staffId = $staffProfile->id;
                 Log::info('Logged-in user staff_id: ' . $staffId);
-
+        
                 // Function to save image and return the image name, upload date, and path
                 $saveImage = function($imageData) {
                     $decodedImage = base64_decode($imageData, true);
@@ -476,18 +496,18 @@ class TaskController extends Controller
                         throw new \Exception('Invalid base64 image');
                     }
                     $uniqueId = uniqid();
-
+        
                     $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '.webp';
                     $isSaved = Storage::disk('public')->put('photos/projects/' . $imageName, $decodedImage);
-
+        
                     if (!$isSaved) {
                         Log::error('Failed to save image');
                         throw new \Exception('Failed to save image');
                     }
-
+        
                     $photoPath = asset('storage/photos/projects/' . $imageName);
                     Log::info('Image saved successfully: ' . $photoPath);
-
+        
                     // Return the image name, upload date, and full path
                     return [
                         'image' => $imageName,
@@ -495,19 +515,19 @@ class TaskController extends Controller
                         'path' => $photoPath
                     ];
                 };
-
+        
                 // Initialize response data
                 $responseData = [
                     'message' => 'Task updated successfully',
                 ];
-
+        
                 // Handle the placeholder_images field
                 if (!empty($request->placeholder_images)) {
                     $imagesData = [];
                     foreach ($request->placeholder_images as $image) {
                         $imageData = $saveImage($image);
                         $imagesData[] = $imageData;
-
+        
                         // Insert into task_update_pictures table
                         $inserted = DB::table('task_update_pictures')->insert([
                             'task_id' => $taskId,
@@ -516,7 +536,7 @@ class TaskController extends Controller
                             'created_at' => now(),
                             'updated_at' => now(),
                         ]);
-
+        
                         if ($inserted) {
                             Log::info('Image data inserted into task_update_pictures table: ' . $imageData['path']);
                         } else {
@@ -525,7 +545,7 @@ class TaskController extends Controller
                     }
                     $responseData['placeholder_images'] = $imagesData;
                 }
-
+        
                 // Handle the resources field
                 if (!empty($request->resources)) {
                     // Validate the request data for resources
@@ -534,15 +554,15 @@ class TaskController extends Controller
                         'resources.*.resource_id' => 'required|integer|exists:resources,id',
                         'resources.*.used_qty' => 'required|integer|min:1',
                     ]);
-
+        
                     // Fetch resources related to the task
                     $resources = Resources::where('task_id', $taskId)->get();
-
+        
                     // Check if resources are found
                     if ($resources->isEmpty()) {
                         return response()->json(['message' => 'No resources found for this task'], 404);
                     }
-
+        
                     // Iterate over the resources and check if the available quantity is sufficient
                     foreach ($validatedData['resources'] as $resourceData) {
                         $resource = $resources->where('id', $resourceData['resource_id'])->first();
@@ -555,7 +575,7 @@ class TaskController extends Controller
                             return response()->json(['message' => 'Resource ID: ' . ($resourceData['resource_id'] ?? 'Unknown') . ' not found'], 404);
                         }
                     }
-
+        
                     // Iterate over the resources and update the used quantities
                     foreach ($validatedData['resources'] as $resourceData) {
                         $resource = $resources->where('id', $resourceData['resource_id'])->first();
@@ -563,7 +583,7 @@ class TaskController extends Controller
                             // Update the total used resources
                             $resource->total_used_resources += $resourceData['used_qty'];
                             $resource->save();
-
+        
                             // Insert into used_resources table
                             UsedResources::create([
                                 'resource_id' => $resource->id,
@@ -574,9 +594,22 @@ class TaskController extends Controller
                         }
                     }
                 }
-
+        
                 // Store the estimated_resource_value in the new table
                 if ($request->has('estimated_resource_value')) {
+                    // Fetch the sum of all existing estimated_resource_value entries for the task
+                    $existingEstimatedValueSum = DB::table('task_estimated_values')
+                        ->where('task_id', $taskId)
+                        ->sum('estimated_resource_value');
+        
+                    // Calculate the new total estimated resource value
+                    $newTotalEstimatedValue = $existingEstimatedValueSum + $request->estimated_resource_value;
+        
+                    // Validate that the new total estimated resource value does not exceed the task budget
+                    if ($newTotalEstimatedValue > $task->pt_allocated_budget) {
+                        return response()->json(['message' => 'Total estimated resource value exceeds the task budget'], 400);
+                    }
+        
                     EstimatedCost::create([
                         'task_id' => $taskId,
                         'estimated_resource_value' => $request->estimated_resource_value,
@@ -584,13 +617,13 @@ class TaskController extends Controller
                     ]);
                     $responseData['estimated_resource_value'] = $request->estimated_resource_value;
                 }
-
+        
                 $task->save();
-
+        
                 DB::commit(); // Commit the transaction
-
+        
                 Log::info('Task saved successfully');
-
+        
                 return response()->json($responseData, 200);
             } catch (\Exception $e) {
                 DB::rollBack(); // Rollback the transaction in case of error
