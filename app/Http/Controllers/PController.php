@@ -399,14 +399,14 @@ class PController extends Controller
                  'pt_task_name' => 'required|string',
                  'pt_completion_date' => 'required|date',
                  'pt_starting_date' => 'required|date',
-                 'resources' => 'required|array',
-                 'resources.*.resource_name' => 'required|string',
-                 'resources.*.qty' => 'required|integer',
+                 'resources' => 'nullable|array', // Make resources nullable
+                 'resources.*.resource_name' => 'required_with:resources|string', // Validate resource_name only if resources are provided
+                 'resources.*.qty' => 'required_with:resources|integer', // Validate qty only if resources are provided
                  'category_id' => 'required|exists:categories,id', // Validate category_id
                  'pt_total_budget' => 'required|numeric', // Total budget for the task
              ]);
      
-             $resources = $validatedData['resources'];
+             $resources = $validatedData['resources'] ?? []; // Default to an empty array if resources are not provided
      
              $validatedData['project_id'] = $project_id;
      
@@ -459,7 +459,7 @@ class PController extends Controller
              $taskData = array_merge($validatedData, ['pt_allocated_budget' => $validatedData['pt_total_budget']]);
              $task = Task::create($taskData);
      
-             // Add resources to the database
+             // Add resources to the database if provided
              foreach ($resources as $resource) {
                  $resource['task_id'] = $task->id;
                  $resource['total_cost'] = $validatedData['pt_total_budget']; // Use pt_total_budget for total_cost
@@ -495,8 +495,6 @@ class PController extends Controller
              return response()->json(['message' => 'Failed to add task', 'error' => $e->getMessage()], 500);
          }
      }
-
-
 
 
         public function addCategory(Request $request, $project_id)
@@ -1847,4 +1845,167 @@ class PController extends Controller
             ], 500);
         }
     }
+
+
+
+
+
+
+
+    public function getProjectHistory($projectId)
+    {
+        try {
+            // Find the project by ID
+            $project = Project::findOrFail($projectId);
+            Log::info('Project found: ' . $projectId);
+    
+            // Fetch tasks related to the project
+            $tasks = Task::where('project_id', $projectId)->pluck('id');
+    
+            // Fetch images and additional details from the task_update_pictures table
+            $projectHistory = DB::table('task_update_pictures')
+                ->leftJoin('resources', 'task_update_pictures.task_id', '=', 'resources.task_id')
+                ->leftJoin('used_resources', 'resources.id', '=', 'used_resources.resource_id')
+                ->leftJoin('staff_profiles', 'task_update_pictures.staff_id', '=', 'staff_profiles.id')
+                ->leftJoin('task_estimated_values', function($join) {
+                    $join->on('task_update_pictures.task_id', '=', 'task_estimated_values.task_id')
+                        ->on('task_update_pictures.created_at', '=', 'task_estimated_values.created_at');
+                })
+                ->leftJoin('project_tasks', 'task_update_pictures.task_id', '=', 'project_tasks.id')
+                ->leftJoin('categories', 'project_tasks.category_id', '=', 'categories.id')
+                ->whereIn('task_update_pictures.task_id', $tasks)
+                ->get([
+                    'task_update_pictures.tup_photo', 
+                    'task_update_pictures.created_at', 
+                    'task_estimated_values.description', 
+                    'task_estimated_values.estimated_resource_value', 
+                    'used_resources.resource_qty', 
+                    'used_resources.used_resource_name as used_resource_name', 
+                    'staff_profiles.first_name', 
+                    'staff_profiles.last_name',
+                    'project_tasks.pt_task_name as task_name',
+                    'categories.category_name as category_name'
+                ]);
+    
+            // Initialize an array to store images and resources grouped by their upload dates and categories
+            $historyByDateAndCategory = [];
+    
+            // Use a set to track unique images
+            $uniqueImages = [];
+    
+            // Get the project start date
+            $projectStartDate = \Carbon\Carbon::parse($project->created_at);
+    
+            // Iterate over each record and group images by their upload date and category
+            foreach ($projectHistory as $record) {
+                $uploadDate = \Carbon\Carbon::parse($record->created_at);
+                $dayCount = $uploadDate->diffInDays($projectStartDate) + 1; // Adding 1 to make it 1-based index
+                $formattedDate = $uploadDate->format('Y-m-d');
+                $categoryName = $record->category_name;
+    
+                Log::info('Processing record for date: ' . $formattedDate . ' and category: ' . $categoryName);
+                Log::info('Description: ' . $record->description);
+                Log::info('Used Budget: ' . $record->estimated_resource_value);
+                Log::info('Staff Name: ' . $record->first_name . ' ' . $record->last_name);
+                Log::info('Task Name: ' . $record->task_name);
+    
+                if (!isset($historyByDateAndCategory[$formattedDate])) {
+                    $historyByDateAndCategory[$formattedDate] = [];
+                }
+    
+                if (!isset($historyByDateAndCategory[$formattedDate][$categoryName])) {
+                    $historyByDateAndCategory[$formattedDate][$categoryName] = [
+                        'day' => 'Day ' . $dayCount,
+                        'uploaded_at' => $formattedDate,
+                        'category' => $categoryName,
+                        'images' => [],
+                        'resources' => [],
+                        'description' => $record->description,
+                        'used_budget' => $record->estimated_resource_value,
+                        'staff_name' => $record->first_name . ' ' . $record->last_name,
+                        'task_name' => $record->task_name
+                    ];
+                }
+    
+                // Add image to the set to ensure uniqueness
+                if (!in_array($record->tup_photo, $uniqueImages)) {
+                    $uniqueImages[] = $record->tup_photo;
+                    $historyByDateAndCategory[$formattedDate][$categoryName]['images'][] = $record->tup_photo;
+                }
+            }
+    
+            // Fetch resources that don't have a matching image upload date
+            $resources = DB::table('used_resources')
+                ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
+                ->whereIn('resources.task_id', $tasks)
+                ->get([
+                    'used_resources.resource_qty', 
+                    'used_resources.used_resource_name as used_resource_name', 
+                    'used_resources.created_at'
+                ]);
+    
+            // Iterate over each resource and group them by their upload date and category
+            foreach ($resources as $resource) {
+                $resourceDate = \Carbon\Carbon::parse($resource->created_at);
+                $dayCount = $resourceDate->diffInDays($projectStartDate) + 1; // Adding 1 to make it 1-based index
+                $formattedDate = $resourceDate->format('Y-m-d');
+                $categoryName = 'Uncategorized'; // Default category for resources without a specific category
+    
+                Log::info('Processing resource for date: ' . $formattedDate . ' and category: ' . $categoryName);
+                Log::info('Resource Name: ' . $resource->used_resource_name);
+                Log::info('Resource Quantity: ' . $resource->resource_qty);
+    
+                if (!isset($historyByDateAndCategory[$formattedDate])) {
+                    $historyByDateAndCategory[$formattedDate] = [];
+                }
+    
+                if (!isset($historyByDateAndCategory[$formattedDate][$categoryName])) {
+                    $historyByDateAndCategory[$formattedDate][$categoryName] = [
+                        'day' => 'Day ' . $dayCount,
+                        'uploaded_at' => $formattedDate,
+                        'category' => $categoryName,
+                        'images' => [],
+                        'resources' => [],
+                        'description' => null,
+                        'used_budget' => null,
+                        'staff_name' => null,
+                        'task_name' => null
+                    ];
+                }
+    
+                $resourceKey = $resource->used_resource_name . '-' . $resource->resource_qty;
+                if (!array_key_exists($resourceKey, $historyByDateAndCategory[$formattedDate][$categoryName]['resources'])) {
+                    $historyByDateAndCategory[$formattedDate][$categoryName]['resources'][$resourceKey] = [
+                        'name' => $resource->used_resource_name,
+                        'qty' => $resource->resource_qty
+                    ];
+                }
+            }
+    
+            // Convert the associative array to a numeric array
+            $history = [];
+            foreach ($historyByDateAndCategory as $date => $categories) {
+                foreach ($categories as $category => $data) {
+                    $history[] = $data;
+                }
+            }
+    
+            // Log the final structure of historyByDateAndCategory
+            Log::info('Final historyByDateAndCategory structure: ' . json_encode($historyByDateAndCategory));
+    
+            // Prepare the response data
+            $responseData = [
+                'history' => $history
+            ];
+    
+            // Return the response with the history grouped by their upload dates and categories
+            return response()->json(['data' => $responseData], 200);
+        } catch (\Exception $e) {
+            Log::error('Error fetching history for project ' . $projectId . ': ' . $e->getMessage());
+            return response()->json(['error' => 'An error occurred while fetching the history'], 500);
+        }
+    }
+
+
+
 }
