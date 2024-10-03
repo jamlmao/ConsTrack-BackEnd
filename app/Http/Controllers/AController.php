@@ -212,12 +212,20 @@ class AController extends Controller
             'company_name' => 'required_if:user.role,admin|string|max:60', // Add company_name validation for admin
         ]);
     
-        $client = null; // Initialize the $client variable
-        $company = null; // Initialize the $company variable
-    
         DB::beginTransaction();
     
         try {
+            // Create or find the company
+            if ($user->role === 'admin') {
+                $company = Company::firstOrCreate(['company_name' => $validatedData['company_name']]);
+            } else {
+                $company = Company::find($user->staffProfile->company_id);
+                if (!$company) {
+                    throw new \Exception('Company not found for the staff user');
+                }
+            }
+    
+            // Create the user and client profile in a single transaction
             $client = User::create([
                 'name' => $validatedData['name'],
                 'email' => $validatedData['email'],
@@ -228,20 +236,6 @@ class AController extends Controller
                 'status' => 'Not Active'
             ]);
     
-            if ($user->role === 'admin') {
-                $companyName = $validatedData['company_name'];
-    
-                $company = Company::firstOrCreate(['company_name' => $companyName]);
-                $companyId = $company->id;
-            } else {
-                $companyId = $user->staffProfile->company_id;
-                $company = Company::find($companyId);
-    
-                if (!$company) {
-                    throw new \Exception('Company not found for the staff user');
-                }
-            }
-    
             $clientProfile = $client->clientProfile()->create([
                 'first_name' => $validatedData['first_name'],
                 'last_name' => $validatedData['last_name'],
@@ -250,31 +244,17 @@ class AController extends Controller
                 'city' => $validatedData['city'],
                 'country' => $validatedData['country'],
                 'zipcode' => $validatedData['zipcode'],
-                'company_id' => $companyId,
+                'company_id' => $company->id,
                 'phone_number' => $validatedData['phone_number'],
             ]);
     
-            $newValues = [
-                'name' => $client->name,
-                'email' => $client->email,
-                'password' => $client->password,
-                'first_name' => $validatedData['first_name'],
-                'last_name' => $validatedData['last_name'],
-                'sex' => $validatedData['sex'],
-                'address' => $validatedData['address'],
-                'city' => $validatedData['city'],
-                'country' => $validatedData['country'],
-                'zipcode' => $validatedData['zipcode'],
-                'company_id' => $companyId,
-                'phone_number' => $validatedData['phone_number'],
-            ];
-    
+            // Log the audit
             AuditLog::create([
                 'user_id' => $client->id,
-                'editor_id' => auth()->user()->id,
+                'editor_id' => $user->id,
                 'action' => 'create',
                 'old_values' => null,
-                'new_values' => json_encode($newValues),
+                'new_values' => json_encode($validatedData),
             ]);
     
             DB::commit();
@@ -302,7 +282,6 @@ class AController extends Controller
             ], 500);
         }
     }
-
 
         public function getClientsUnderSameCompany()
         {

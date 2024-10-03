@@ -1934,14 +1934,17 @@ class PController extends Controller
                 }
             }
     
-            // Fetch resources that don't have a matching image upload date
+            // Fetch resources along with their task categories
             $resources = DB::table('used_resources')
                 ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
+                ->leftJoin('project_tasks', 'resources.task_id', '=', 'project_tasks.id')
+                ->leftJoin('categories', 'project_tasks.category_id', '=', 'categories.id')
                 ->whereIn('resources.task_id', $tasks)
                 ->get([
                     'used_resources.resource_qty', 
                     'used_resources.used_resource_name as used_resource_name', 
-                    'used_resources.created_at'
+                    'used_resources.created_at',
+                    'categories.category_name as category_name'
                 ]);
     
             // Iterate over each resource and group them by their upload date and category
@@ -1949,7 +1952,7 @@ class PController extends Controller
                 $resourceDate = \Carbon\Carbon::parse($resource->created_at);
                 $dayCount = $resourceDate->diffInDays($projectStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $resourceDate->format('Y-m-d');
-                $categoryName = 'Uncategorized'; // Default category for resources without a specific category
+                $categoryName = $resource->category_name ?: 'Uncategorized'; // Default category for resources without a specific category
     
                 Log::info('Processing resource for date: ' . $formattedDate . ' and category: ' . $categoryName);
                 Log::info('Resource Name: ' . $resource->used_resource_name);
@@ -2005,7 +2008,6 @@ class PController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the history'], 500);
         }
     }
-
 
 
 }
