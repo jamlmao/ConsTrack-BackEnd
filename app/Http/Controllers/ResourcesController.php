@@ -34,38 +34,34 @@ class ResourcesController extends Controller
     {
         try {
             $task = Task::find($task_id);
-    
+
             if (!$task) {
                 return response()->json(['message' => 'Task not found'], 404);
             }
-    
+
             $category = Category::find($task->category_id);
             $category_name = $category->category_name;
-    
+
             // Fetch all resources associated with the given task ID
             $resources = Resources::where('task_id', $task_id)->get();
-    
-            // Check if resources are found
-            if ($resources->isEmpty()) {
-                return response()->json(['message' => 'No resources found for this task'], 404);
-            }
-    
+
             // Calculate the left resources for each resource
             $resourcesWithLeftQty = $resources->map(function ($resource) {
                 $resource->left_qty = $resource->qty - $resource->total_used_resources;
                 return $resource;
             });
-    
+
             // Fetch the sum of estimated_resource_value from task_estimated_values table
             $estimatedResourceValueSum = DB::table('task_estimated_values')
                 ->where('task_id', $task_id)
                 ->sum('estimated_resource_value');
             Log::info('Estimated resource value sum: ' . $estimatedResourceValueSum);
             $estimatedResourceValueSum = intval($estimatedResourceValueSum);
+
             // Calculate the percentage based on the estimated resource value sum
             $task->percentage = $estimatedResourceValueSum >= $task->pt_allocated_budget ? 100 : ($estimatedResourceValueSum / $task->pt_allocated_budget) * 100;
             Log::info('Task percentage: ' . $task->percentage);
-    
+
             // Return the resources along with the task, category name, and estimated resource value sum
             return response()->json([
                 'resources' => $resourcesWithLeftQty,
@@ -78,8 +74,7 @@ class ResourcesController extends Controller
             Log::error('Failed to fetch resources: ' . $e->getMessage());
             return response()->json(['message' => 'Failed to fetch resources', 'error' => $e->getMessage()], 500);
         }
-    }
-
+}
 
 
 

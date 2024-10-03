@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\ClientProfile;
 use App\Models\AuditLog;
 use App\Models\StaffProfile;
+use App\Mail\ClientCreated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -170,221 +171,137 @@ class AController extends Controller
 
 
 
-        public function createClient(Request $request)
-        {
-            $user = Auth::user();
-        
-            if (!in_array($user->role, ['admin', 'staff'])) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Unauthorized'
-                ], 403);
+    public function createClient(Request $request)
+    {
+        $user = Auth::user();
+    
+        if (!in_array($user->role, ['admin', 'staff'])) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+    
+        if ($user->role !== 'admin' && !$user->staffProfile) {
+            return response()->json([
+                'status' => false,
+                'message' => 'User does not have an associated staff profile'
+            ], 400);
+        }
+    
+        $validatedData = $request->validate([
+            'name' => 'required|string|max:20',
+            'email' => 'required|string|email|max:100|unique:users',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'regex:/[A-Z]/', // must contain at least one uppercase letter
+                'regex:/[a-z]/', // must contain at least one lowercase letter
+                'regex:/[0-9]/', // must contain at least one digit
+                'regex:/[@$!%*?&#]/' // must contain a special character
+            ],
+            'first_name' => 'required|string|max:20',
+            'last_name' => 'required|string|max:20',
+            'sex' => 'required|in:M,F',
+            'address' => 'required|string|max:60',
+            'city' => 'required|string|max:60',
+            'country' => 'required|string|max:60',
+            'zipcode' => 'required|string|regex:/^\d{0,9}$/',
+            'phone_number' => 'required|string|regex:/^\d{10,15}$/',
+            'company_name' => 'required_if:user.role,admin|string|max:60', // Add company_name validation for admin
+        ]);
+    
+        $client = null; // Initialize the $client variable
+        $company = null; // Initialize the $company variable
+    
+        DB::beginTransaction();
+    
+        try {
+            $client = User::create([
+                'name' => $validatedData['name'],
+                'email' => $validatedData['email'],
+                'password' => Hash::make($validatedData['password']),
+                'role' => 'client',
+                'created_by' => $user->id,
+                'updated_by' => $user->id,
+                'status' => 'Not Active'
+            ]);
+    
+            if ($user->role === 'admin') {
+                $companyName = $validatedData['company_name'];
+    
+                $company = Company::firstOrCreate(['company_name' => $companyName]);
+                $companyId = $company->id;
+            } else {
+                $companyId = $user->staffProfile->company_id;
+                $company = Company::find($companyId);
+    
+                if (!$company) {
+                    throw new \Exception('Company not found for the staff user');
+                }
             }
-        
-            if ($user->role !== 'admin' && !$user->staffProfile) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'User does not have an associated staff profile'
-                ], 400);
-            }
-        
-            $validatedData = $request->validate([
-                'name' => 'required|string|max:20',
-                'email' => 'required|string|email|max:100|unique:users',
-                'password' => [
-                    'required',
-                    'string',
-                    'min:8',
-                    'regex:/[A-Z]/', // must contain at least one uppercase letter
-                    'regex:/[a-z]/', // must contain at least one lowercase letter
-                    'regex:/[0-9]/', // must contain at least one digit
-                    'regex:/[@$!%*?&#]/' // must contain a special character
+    
+            $clientProfile = $client->clientProfile()->create([
+                'first_name' => $validatedData['first_name'],
+                'last_name' => $validatedData['last_name'],
+                'sex' => $validatedData['sex'],
+                'address' => $validatedData['address'],
+                'city' => $validatedData['city'],
+                'country' => $validatedData['country'],
+                'zipcode' => $validatedData['zipcode'],
+                'company_id' => $companyId,
+                'phone_number' => $validatedData['phone_number'],
+            ]);
+    
+            $newValues = [
+                'name' => $client->name,
+                'email' => $client->email,
+                'password' => $client->password,
+                'first_name' => $validatedData['first_name'],
+                'last_name' => $validatedData['last_name'],
+                'sex' => $validatedData['sex'],
+                'address' => $validatedData['address'],
+                'city' => $validatedData['city'],
+                'country' => $validatedData['country'],
+                'zipcode' => $validatedData['zipcode'],
+                'company_id' => $companyId,
+                'phone_number' => $validatedData['phone_number'],
+            ];
+    
+            AuditLog::create([
+                'user_id' => $client->id,
+                'editor_id' => auth()->user()->id,
+                'action' => 'create',
+                'old_values' => null,
+                'new_values' => json_encode($newValues),
+            ]);
+    
+            DB::commit();
+    
+            // Send email to the client
+            Mail::to($client->email)->send(new ClientCreated($client, $clientProfile, $validatedData['password'], $company));
+    
+            return response()->json([
+                'message' => 'Client created successfully',
+                'client' => [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'email' => $client->email,
+                    'first_name' => $clientProfile->first_name,
+                    'last_name' => $clientProfile->last_name,
                 ],
-                'first_name' => 'required|string|max:20',
-                'last_name' => 'required|string|max:20',
-                'sex' => 'required|in:M,F',
-                'address' => 'required|string|max:60',
-                'city' => 'required|string|max:60',
-                'country' => 'required|string|max:60',
-                'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-                'phone_number' => 'required|string|regex:/^\d{10,15}$/',
-                'company_name' => 'required_if:user.role,admin|string|max:60', // Add company_name validation for admin
-            ]);
-        
-            $client = null; // Initialize the $client variable
-            $company = null; // Initialize the $company variable
-        
-            try {
-                DB::transaction(function () use ($request, $user, $validatedData, &$client, &$company) {
-                    $client = User::create([
-                        'name' => $validatedData['name'],
-                        'email' => $validatedData['email'],
-                        'password' => Hash::make($validatedData['password']),
-                        'role' => 'client',
-                        'created_by' => $user->id, // Track who created the client
-                        'updated_by' => $user->id, // Track who last updated the client
-                        'status' => 'Not Active'
-                    ]);
-        
-                    if ($user->role === 'admin') {
-                        $companyName = $validatedData['company_name'];
-        
-                        // Check if the company already exists
-                        $company = Company::where('company_name', $companyName)->first();
-        
-                        if ($company) {
-                            // Use the existing company's ID
-                            $companyId = $company->id;
-                        } else {
-                            // Create a new company and get its ID
-                            $company = Company::create([
-                                'company_name' => $companyName,
-                                // Add other necessary fields for the company
-                            ]);
-                            $companyId = $company->id;
-                        }
-                    } else {
-                        // For staff, get the company from the staff profile
-                        $companyId = $user->staffProfile->company_id;
-                        $company = Company::find($companyId);
-        
-                        if (!$company) {
-                            throw new \Exception('Company not found for the staff user');
-                        }
-                    }
-        
-                    $client->ClientProfile()->create([
-                        'first_name' => $validatedData['first_name'],
-                        'last_name' => $validatedData['last_name'],
-                        'sex' => $validatedData['sex'],
-                        'address' => $validatedData['address'],
-                        'city' => $validatedData['city'],
-                        'country' => $validatedData['country'],
-                        'zipcode' => $validatedData['zipcode'],
-                        'company_id' => $companyId, // Set the company ID
-                        'phone_number' => $validatedData['phone_number'],
-                    ]);
-        
-                    $newValues = [
-                        'name' => $client->name,
-                        'email' => $client->email,
-                        'password' => $client->password,
-                        'first_name' => $validatedData['first_name'],
-                        'last_name' => $validatedData['last_name'],
-                        'sex' => $validatedData['sex'],
-                        'address' => $validatedData['address'],
-                        'city' => $validatedData['city'],
-                        'country' => $validatedData['country'],
-                        'zipcode' => $validatedData['zipcode'],
-                        'company_id' => $companyId, // Set the company ID
-                        'phone_number' => $validatedData['phone_number'],
-                    ];
-        
-                    AuditLog::create([
-                        'user_id' => $client->id,
-                        'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
-                        'action' => 'create',
-                        'old_values' => null,
-                        'new_values' => json_encode($newValues),
-                    ]);
-                });
-        
-                return response()->json([
-                    'message' => 'Client created successfully',
-                    'client' => $client,
-                    'company' => $company
-                ], 201);
-            } catch (\Throwable $th) {
-                return response()->json([
-                    'status' => false,
-                    'message' => $th->getMessage()
-                ], 500);
-            }
+                'company' => $company
+            ], 201);
+        } catch (\Throwable $th) {
+            DB::rollBack();
+    
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
         }
-
-
-
-
-        public function editClient(Request $request, $clientId)
-        {
-            $user = Auth::user();
-
-            if (!in_array($user->role, ['admin', 'staff'])) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Unauthorized'
-                ], 403);
-            }
-
-            if ($user->role !== 'admin' && !$user->staffProfile) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'User does not have an associated staff profile'
-                ], 400);
-            }
-
-            $validatedData = $request->validate([
-                'name' => 'required|string|max:20',
-                'email' => 'required|string|email|max:100|unique:users,email,' . $clientId,
-                'first_name' => 'required|string|max:20',
-                'last_name' => 'required|string|max:20',
-                'sex' => 'required|in:M,F',
-                'address' => 'required|string|max:60',
-                'city' => 'required|string|max:60',
-                'country' => 'required|string|max:60',
-                'zipcode' => 'required|string|regex:/^\d{0,9}$/',
-                'phone_number' => 'required|string|regex:/^\d{10,15}$/',
-            ]);
-
-            try {
-                DB::transaction(function () use ($request, $user, $validatedData, $clientId) {
-                    $client = User::findOrFail($clientId);
-
-                    $oldValues = $client->only([
-                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
-                    ]);
-
-                    $client->update([
-                        'name' => $validatedData['name'],
-                        'email' => $validatedData['email'],
-                        'updated_by' => $user->id,
-                    ]);
-
-                    $client->ClientProfile()->update([
-                        'first_name' => $validatedData['first_name'],
-                        'last_name' => $validatedData['last_name'],
-                        'sex' => $validatedData['sex'],
-                        'address' => $validatedData['address'],
-                        'city' => $validatedData['city'],
-                        'country' => $validatedData['country'],
-                        'zipcode' => $validatedData['zipcode'],
-                        'phone_number' => $validatedData['phone_number'],
-                    ]);
-
-                    $newValues = $client->only([
-                        'name', 'email', 'first_name', 'last_name', 'sex', 'address', 'city', 'country', 'zipcode', 'phone_number'
-                    ]);
-
-                    AuditLog::create([
-                        'user_id' => $client->id,
-                        'editor_id' => auth()->user()->id,
-                        'action' => 'edit',
-                        'old_values' => json_encode($oldValues),
-                        'new_values' => json_encode($newValues),
-                    ]);
-                });
-
-                return response()->json([
-                    'message' => 'Client updated successfully',
-                    'client' => $client
-                ], 200);
-            } catch (\Throwable $th) {
-                return response()->json([
-                    'status' => false,
-                    'message' => $th->getMessage()
-                ], 500);
-            }
-        }
+    }
 
 
         public function getClientsUnderSameCompany()
@@ -671,6 +588,8 @@ class AController extends Controller
             }
         }
         
+
+
  
         public function getStaffCountByMonth()
         {
@@ -718,6 +637,9 @@ class AController extends Controller
             }
         }
 
+
+
+
         public function getStaffCountByMonthA()
         {
             try {
@@ -760,6 +682,9 @@ class AController extends Controller
 
 
 
+
+
+
         private function getExtensionName($extensionName)
         {
             switch (strtolower($extensionName)) {
@@ -771,6 +696,11 @@ class AController extends Controller
                     return $extensionName; // Return the original value if it doesn't match
             }
         }
+
+
+
+
+
 
         public function getLoggedInUserNameAndId()
         {
@@ -831,6 +761,11 @@ class AController extends Controller
 
 
 
+
+
+
+
+
    
     public function sendOtp(Request $request)
     {
@@ -858,6 +793,20 @@ class AController extends Controller
 
         return response()->json(['message' => 'OTP sent to your email'], 200);
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     public function updatePassword(Request $request)
     {
