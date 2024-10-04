@@ -45,14 +45,14 @@ class ClientCreated extends Mailable
 
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com', $this->company->company_name)
                     ->subject('Your Account Has Been Created')
                     ->view('emails.client_created')
                     ->with([
                         'user' => $this->user,
                         'clientProfile' => $this->clientProfile,
                         'password' => $this->password,
-                        'company' => $this->company,
+                        'company' => $this->company->company_name,
                     ]);
     }
 }

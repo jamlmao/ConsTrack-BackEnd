@@ -12,15 +12,16 @@ class TaskDueTomorrow extends Mailable
     use Queueable, SerializesModels;
 
     public $task;
-
+    public $staffCompanyName;
     /**
      * Create a new message instance.
      *
      * @param $task
      */
-    public function __construct($task)
+    public function __construct($task,$staffCompanyName)
     {
         $this->task = $task;
+        $this->staffCompanyName = $staffCompanyName;
     }
 
     /**
@@ -30,7 +31,7 @@ class TaskDueTomorrow extends Mailable
      */
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com',  $this->staffCompanyName)
                     ->subject('Task Due Tomorrow')
                     ->view('emails.task_due_tomorrow')
                     ->with(['task' => $this->task]);

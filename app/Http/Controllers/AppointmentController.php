@@ -9,6 +9,7 @@ use App\Models\Appointment;
 use App\Models\StaffProfile;
 use App\Models\ClientProfile;
 use App\Models\User;
+use App\Models\Company;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon; 
@@ -52,6 +53,13 @@ class AppointmentController extends Controller
     
             Log::info('Client ID: ', ['client_id' => $clientId]);
     
+            // Fetch the company name
+            $company = Company::find($companyId);
+            if (!$company) {
+                return response()->json(['message' => 'Company not found.'], 404);
+            }
+            $companyName = $company->company_name;
+    
             // Extract the date from the appointment_datetime
             $appointmentDate = Carbon::parse($validatedData['appointment_datetime'])->format('Y-m-d');
     
@@ -70,6 +78,7 @@ class AppointmentController extends Controller
                 ->whereHas('client', function ($query) use ($companyId) {
                     $query->where('company_id', $companyId);
                 })
+                ->where('status', '!=', 'R')
                 ->exists();
     
             if ($conflict) {
@@ -97,7 +106,7 @@ class AppointmentController extends Controller
             // Send email to staff
             $staffProfile = StaffProfile::find($validatedData['staff_id']);
             $staffEmail = $staffProfile->user->email;
-            Mail::to($staffEmail)->send(new AppointmentRequest($clientProfile, $appointment));
+            Mail::to($staffEmail)->send(new AppointmentRequest($clientProfile, $appointment, $companyName));
     
             DB::commit();
     
@@ -185,6 +194,9 @@ class AppointmentController extends Controller
         Log::info('updateStatus called with ID: ' . $id);
     
         try {
+            // Start the transaction
+            DB::beginTransaction();
+    
             // Validate the request
             $request->validate([
                 'status' => 'required|string|in:A,R'
@@ -207,6 +219,7 @@ class AppointmentController extends Controller
             $client = $appointment->client;
             if (!$client) {
                 Log::error('Client not found for appointment ID: ' . $appointment->id);
+                DB::rollBack();
                 return response()->json([
                     'status' => false,
                     'message' => 'Client not found.'
@@ -216,6 +229,7 @@ class AppointmentController extends Controller
             $user = $client->user;
             if (!$user || !$user->email) {
                 Log::error('User email not found for client ID: ' . $client->id);
+                DB::rollBack();
                 return response()->json([
                     'status' => false,
                     'message' => 'User email not found.'
@@ -224,18 +238,44 @@ class AppointmentController extends Controller
     
             Log::info('User email: ' . $user->email);
     
+            // Fetch the company name from the companies table using the company_id
+            $company = Company::find($client->company_id);
+            if (!$company) {
+                Log::error('Company not found for company ID: ' . $client->company_id);
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Company not found.'
+                ], 500);
+            }
+            $companyName = $company->company_name; // Assuming the company name column is 'company_name'
+    
+            // Log the company name
+            Log::info('Company name: ' . $companyName);
+    
+            // Get the available date using your existing function
+            $availableDate = $this->getAvailableDates();
+    
             // Send email based on status
             if ($appointment->status == 'A') {
-                Mail::to($user->email)->send(new AppointmentAccepted($appointment));
+                Mail::to($user->email)->send(new AppointmentAccepted($appointment, $companyName, $availableDate));
                 Log::info('AppointmentAccepted email sent to: ' . $user->email);
             } elseif ($appointment->status == 'R') {
                 // Get available dates excluding Saturdays and Sundays
                 $availableDates = $this->getAvailableDates();
     
+                // Ensure $availableDates is an array
+                if (!is_array($availableDates)) {
+                    $availableDates = [$availableDates];
+                }
+    
                 // Send rejection email with available dates
-                Mail::to($user->email)->send(new AppointmentRejected($appointment, $availableDates));
+                Mail::to($user->email)->send(new AppointmentRejected($appointment, $availableDates, $companyName, $availableDate));
                 Log::info('AppointmentRejected email sent to: ' . $user->email);
             }
+    
+            // Commit the transaction
+            DB::commit();
     
             return response()->json([
                 'status' => true,
@@ -243,6 +283,8 @@ class AppointmentController extends Controller
                 'appointment' => $appointment
             ], 200);
         } catch (\Throwable $th) {
+            // Rollback the transaction in case of error
+            DB::rollBack();
             Log::error('Error updating appointment status: ' . $th->getMessage());
             return response()->json([
                 'status' => false,
@@ -251,20 +293,23 @@ class AppointmentController extends Controller
         }
     }
     
-    private function getAvailableDates()
+    public function getAvailableDates()
     {
-        $today = Carbon::today();
-        $endOfMonth = $today->copy()->endOfMonth();
-        $availableDates = [];
+        $user = auth()->user();
+        $companyId = $user->staffProfile->company_id;
     
-        while ($today->lte($endOfMonth) && count($availableDates) < 10) {
-            if (!$today->isWeekend() && !$this->isDateTaken($today)) {
-                $availableDates[] = $today->format('Y-m-d');
-            }
-            $today->addDay();
-        }
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
     
-        return $availableDates;
+        // Fetch only the available_date values
+        $availableDates = AvailableDate::whereHas('staff', function ($query) use ($companyId) {
+            $query->where('company_id', $companyId);
+        })
+        ->whereMonth('available_date', $currentMonth)
+        ->whereYear('available_date', $currentYear)
+        ->pluck('available_date'); // Use pluck to get only the available_date values
+    
+        return $availableDates->toArray(); // Convert to array
     }
 
 
@@ -338,7 +383,31 @@ class AppointmentController extends Controller
     }
 
 
+        public function getAvailableDatesWithStatus()
+    {
+        $user = auth()->user();
+        $companyId = $user->clientProfile->company_id;
 
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
+
+        $availableDates = AvailableDate::whereHas('staff', function ($query) use ($companyId) {
+            $query->where('company_id', $companyId);
+        })
+        ->whereMonth('available_date', $currentMonth)
+        ->whereYear('available_date', $currentYear)
+        ->get()
+        ->map(function ($availableDate) {
+            $appointmentsCount = Appointment::whereDate('appointment_datetime', $availableDate->available_date)
+                ->where('appointments.staff_id', $availableDate->staff_id)
+                ->count();
+
+            $availableDate->status = $appointmentsCount > 0 ? 'Taken' : 'Available';
+            return $availableDate;
+        });
+
+        return response()->json(['available_dates' => $availableDates]);
+    }
 
     public function getAvailableDates2()
     {

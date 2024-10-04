@@ -8,7 +8,10 @@ use App\Models\StaffProfile;
 use App\Models\UsedResources;
 use App\Models\ProjectLogs;
 use App\Models\EstimatedCost;
+use App\Mail\CompleteTask;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -252,13 +255,14 @@ class TaskController extends Controller
     
 
 
-        public function getTaskImages($taskId)
+  
+    public function getTaskImages($taskId)
     {
         try {
             // Find the task by ID
             $task = Task::findOrFail($taskId);
             Log::info('Task found: ' . $taskId);
-
+    
             // Fetch images and additional details from the task_update_pictures table
             $taskUpdatePictures = DB::table('task_update_pictures')
                 ->leftJoin('resources', 'task_update_pictures.task_id', '=', 'resources.task_id')
@@ -279,27 +283,27 @@ class TaskController extends Controller
                     'staff_profiles.first_name', 
                     'staff_profiles.last_name'
                 ]);
-
+    
             // Initialize an array to store images and resources grouped by their upload dates
             $imagesByDate = [];
-
+    
             // Use a set to track unique images
             $uniqueImages = [];
-
+    
             // Get the task start date
             $taskStartDate = \Carbon\Carbon::parse($task->created_at);
-
+    
             // Iterate over each record and group images by their upload date
             foreach ($taskUpdatePictures as $picture) {
                 $uploadDate = \Carbon\Carbon::parse($picture->created_at);
                 $dayCount = $uploadDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $uploadDate->format('Y-m-d');
-
+    
                 Log::info('Processing picture for date: ' . $formattedDate);
                 Log::info('Description: ' . $picture->description);
                 Log::info('Used Budget: ' . $picture->estimated_resource_value);
                 Log::info('Staff Name: ' . $picture->first_name . ' ' . $picture->last_name);
-
+    
                 if (!isset($imagesByDate[$formattedDate])) {
                     $imagesByDate[$formattedDate] = [
                         'day' => 'Day ' . $dayCount,
@@ -311,14 +315,14 @@ class TaskController extends Controller
                         'staff_name' => $picture->first_name . ' ' . $picture->last_name
                     ];
                 }
-
+    
                 // Add image to the set to ensure uniqueness
                 if (!in_array($picture->tup_photo, $uniqueImages)) {
                     $uniqueImages[] = $picture->tup_photo;
                     $imagesByDate[$formattedDate]['images'][] = $picture->tup_photo;
                 }
             }
-
+    
             // Fetch resources that don't have a matching image upload date
             $resources = DB::table('used_resources')
                 ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
@@ -328,17 +332,17 @@ class TaskController extends Controller
                     'used_resources.used_resource_name as used_resource_name', 
                     'used_resources.created_at'
                 ]);
-
+    
             // Iterate over each resource and group them by their upload date
             foreach ($resources as $resource) {
                 $resourceDate = \Carbon\Carbon::parse($resource->created_at);
                 $dayCount = $resourceDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $resourceDate->format('Y-m-d');
-
+    
                 Log::info('Processing resource for date: ' . $formattedDate);
                 Log::info('Resource Name: ' . $resource->used_resource_name);
                 Log::info('Resource Quantity: ' . $resource->resource_qty);
-
+    
                 if (!isset($imagesByDate[$formattedDate])) {
                     $imagesByDate[$formattedDate] = [
                         'day' => 'Day ' . $dayCount,
@@ -350,7 +354,7 @@ class TaskController extends Controller
                         'staff_name' => null
                     ];
                 }
-
+    
                 $resourceKey = $resource->used_resource_name . '-' . $resource->resource_qty;
                 if (!array_key_exists($resourceKey, $imagesByDate[$formattedDate]['resources'])) {
                     $imagesByDate[$formattedDate]['resources'][$resourceKey] = [
@@ -359,18 +363,23 @@ class TaskController extends Controller
                     ];
                 }
             }
-
+    
             // Convert the associative array to a numeric array
             $images = array_values($imagesByDate);
-
+    
+            // Sort the images array by uploaded_at in descending order
+            usort($images, function($a, $b) {
+                return strtotime($b['uploaded_at']) - strtotime($a['uploaded_at']);
+            });
+    
             // Log the final structure of imagesByDate
             Log::info('Final imagesByDate structure: ' . json_encode($imagesByDate));
-
+    
             // Prepare the response data
             $responseData = [
                 'images' => $images
             ];
-
+    
             // Return the response with the images grouped by their upload dates
             return response()->json(['data' => $responseData], 200);
         } catch (\Exception $e) {
@@ -380,79 +389,121 @@ class TaskController extends Controller
     }
 
 
-
         
 
    
-        public function CompleteTask(Request $request)
-        {
-            $taskId = $request->input('task_id');
-        
-            DB::beginTransaction();
-        
-            try {
-                // Fetch the task to be completed
-                $task = Task::find($taskId);
-        
-                // Check if the task exists
-                if (!$task) {
-                    return response()->json(['message' => 'Task not found.'], 404);
-                }
-        
-                // Fetch resources for the task from the used_resources table and join with resources table
-                $taskResources = DB::table('used_resources')
-                    ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
-                    ->where('resources.task_id', $task->id)
-                    ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'resources.unit_cost', 'used_resources.created_at']);
-        
-                $task->resources = $taskResources->map(function ($resource) {
-                    return [
-                        'id' => $resource->resource_id,
-                        'name' => $resource->resource_name,
-                        'total_used_resources' => $resource->total_used_resources,
-                        'qty' => $resource->resource_qty,
-                        'unit_cost' => $resource->unit_cost,
-                        'used_date' => $resource->created_at
-                    ];
-                });
-        
-                // Calculate the total used resources for the task
-                $totalUsedResources = $task->resources->sum(function ($resource) {
-                    return $resource['unit_cost'] * $resource['total_used_resources'];
-                });
-        
-                // Calculate the task percentage
-                $taskPercentage = $totalUsedResources >= $task->pt_allocated_budget ? 100 : ($totalUsedResources / $task->pt_allocated_budget) * 100;
-        
-                // Validate if the total task percentage is above 95%
-                if ($taskPercentage < 95) {
-                    return response()->json(['message' => 'Task percentage must be above 95% to complete the task.'], 400);
-                }
-        
-                // Remove the resources attribute before saving the task
-                unset($task->resources);
-        
-                // Update the task status to completed
-                $task->pt_status = 'C';
-                $task->save();
-        
-                // Update the total_used_budget in the project table
-                $project = Project::find($task->project_id);
-                if ($project) {
-                    $project->total_used_budget += $task->pt_allocated_budget;
-                    $project->save();
-                }
-        
-                DB::commit();
-        
-                return response()->json(['message' => 'Task completed successfully.'], 200);
-            } catch (Exception $e) {
-                DB::rollBack();
-                Log::error('Failed to complete task: ' . $e->getMessage());
-                return response()->json(['message' => 'Failed to complete task', 'error' => $e->getMessage()], 500);
+    public function CompleteTask(Request $request)
+    {
+        $taskId = $request->input('task_id');
+    
+        DB::beginTransaction();
+    
+        try {
+            // Fetch the task to be completed
+            $task = Task::find($taskId);
+    
+            // Check if the task exists
+            if (!$task) {
+                return response()->json(['message' => 'Task not found.'], 404);
             }
-        }
+    
+            // Fetch resources for the task from the used_resources table and join with resources table
+            $taskResources = DB::table('used_resources')
+                ->join('resources', 'used_resources.resource_id', '=', 'resources.id')
+                ->where('resources.task_id', $task->id)
+                ->get(['resources.id as resource_id', 'resources.resource_name as resource_name', 'resources.total_used_resources', 'used_resources.resource_qty', 'resources.unit_cost', 'used_resources.created_at']);
+    
+            $task->resources = $taskResources->map(function ($resource) {
+                return [
+                    'id' => $resource->resource_id,
+                    'name' => $resource->resource_name,
+                    'total_used_resources' => $resource->total_used_resources,
+                    'qty' => $resource->resource_qty,
+                    'unit_cost' => $resource->unit_cost,
+                    'used_date' => $resource->created_at
+                ];
+            });
+    
+            // Fetch the total estimated resource value for the task
+            $totalEstimatedValue = DB::table('task_estimated_values')
+                ->where('task_id', $task->id)
+                ->sum('estimated_resource_value');
+    
+            // Calculate the task percentage
+            $taskPercentage = $totalEstimatedValue >= $task->pt_allocated_budget ? 100 : ($totalEstimatedValue / $task->pt_allocated_budget) * 100;
+            Log::info('Task percentage: ' . $taskPercentage);
+    
+            // Validate if the total task percentage is above 95%
+            if ($taskPercentage < 95) {
+                return response()->json(['message' => 'Task percentage must be above 95% to complete the task.'], 400);
+            }
+    
+            // Remove the resources attribute before saving the task
+            unset($task->resources);
+    
+            // Update the task status to completed
+            $task->pt_status = 'C';
+            $task->pt_completion_date = now(); // Set the completion date
+            $task->save();
+    
+            // Update the total_used_budget in the project table
+            $project = Project::find($task->project_id);
+            if ($project) {
+                $project->total_used_budget += $task->pt_allocated_budget;
+                $project->save();
+            }
+       
+        
+            // Fetch the client_id from the project
+            $client_id = $project->client_id;
+            Log::info('Client ID: ' . $client_id);
 
+
+            // Fetch the company_id from the client profile
+            $clientProfile = ClientProfile::find($client_id);
+            if (!$clientProfile) {
+                return response()->json(['message' => 'Client profile not found.'], 404);
+            }
+
+
+            $user_id = $clientProfile->user_id;
+            Log::info('User ID: ' . $user_id);
+           
+
+            $user = User::find($user_id);
+            if (!$user) {
+                return response()->json(['message' => 'User not found.'], 404);
+            }
+
+             
+            $email = $user->email;
+            Log::info('User Email: ' . $email);
+
+          
+
+            $company_id = $clientProfile->company_id;
+            Log::info('Company ID: ' . $company_id);
+
+            // Fetch the company name from the company table
+            $company = Company::find($company_id);
+            if (!$company) {
+                return response()->json(['message' => 'Company not found.'], 404);
+            }
+            $companyName = $company->company_name;
+            Log::info('Company name: ' . $companyName);
+    
+            DB::commit();
+    
+            // Send email to the task assignee
+            Mail::to($email)->send(new CompleteTask($task, $companyName));
+    
+            return response()->json(['message' => 'Task completed successfully.'], 200);
+        } catch (Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to complete task: ' . $e->getMessage());
+            return response()->json(['message' => 'Failed to complete task', 'error' => $e->getMessage()], 500);
+        }
+    }
 
  
         public function updateTaskv2(Request $request, $taskId)

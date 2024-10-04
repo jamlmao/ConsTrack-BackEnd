@@ -4,7 +4,6 @@
     <title>Appointment Accepted</title>
 </head>
 <body>
-    <h1>Appointment Accepted</h1>
     <p>Your appointment has been accepted.</p>
     <p>Details:</p>
     <ul>

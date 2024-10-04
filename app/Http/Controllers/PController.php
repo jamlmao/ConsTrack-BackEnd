@@ -449,10 +449,16 @@ class PController extends Controller
              $completionDate = Carbon::parse($validatedData['pt_completion_date']);
              $currentDate = Carbon::now();
      
-             if ($completionDate->diffInDays($currentDate, false) < -1) {
+             Log::info('Completion Date: ' . $completionDate);
+             Log::info('Current Date: ' . $currentDate);
+             Log::info('Difference in Days: ' . $completionDate->diffInDays($currentDate, false));
+     
+             if ($completionDate->diffInDays($currentDate, false) >= 1) {
                  $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date is more than one day in the past
+                 Log::info('Status set to D');
              } else {
                  $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                 Log::info('Status set to OG');
              }
      
              // Create a new task with the validated data and calculated allocated budget
@@ -471,21 +477,43 @@ class PController extends Controller
              // Fetch the staff and client emails from the users table
              $staffUser = User::findOrFail($staffUserId);
              $clientUser = User::findOrFail($clientUserId);
+             $staffProfile = StaffProfile::where('user_id', $staffUserId)->firstOrFail();
+             $clientProfile = ClientProfile::where('user_id', $clientUserId)->firstOrFail();
+      
              $staffEmail = $staffUser->email;
              $clientEmail = $clientUser->email;
-             Log::info('Client email: ' . $clientEmail); 
-             Log::info('Staff email: ' . $staffEmail);
+             $staffCompanyId = $staffProfile->company_id;
+             $clientCompanyId = $clientProfile->company_id;
+           
+             // Fetch the company_name for the staff user
+             $staffCompany = Company::find($staffCompanyId);
+             if ($staffCompany) {
+                 $staffCompanyName = $staffCompany->company_name;
+                 Log::info('Staff company name: ' . $staffCompanyName);
+             } else {
+                 Log::warning('Staff company not found for company_id: ' . $staffUser->company_id);
+             }
+     
+             // Fetch the company_name for the client user
+             $clientCompany = Company::find($clientCompanyId);
+             if ($clientCompany) {
+                 $clientCompanyName = $clientCompany->company_name;
+                 Log::info('Client company name: ' . $clientCompanyName);
+             } else {
+                 Log::warning('Client company not found for company_id: ' . $clientUser->company_id);
+             }
      
              // Check if the task is due tomorrow
-             if ($completionDate->isTomorrow()) {
-                 Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
-             }
+             if ($completionDate->isTomorrow() && isset($staffCompanyName)) {
+                Mail::to($staffEmail)->send(new TaskDueTomorrow($task, $staffCompanyName));
+            }
      
              // Check if the task is past the completion date with a one-day clearance
-             if ($completionDate->diffInDays($currentDate, false) < -1) {
-                 $validatedData['pt_status'] = 'D'; // Mark as due
-                 Mail::to($clientEmail)->send(new TaskDue($task));
-             }
+             if ($completionDate->diffInDays($currentDate, false) >= 1 && isset($clientCompanyName)) {
+                $validatedData['pt_status'] = 'D'; // Mark as due
+                Log::info('Status set to D before sending email');
+                Mail::to($clientEmail)->send(new TaskDue($task, $clientCompanyName));
+            }
      
              DB::commit();
              return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);
@@ -1001,8 +1029,11 @@ class PController extends Controller
         public function getSortedProjectTasks3($project_id)
         {
             try {
-                // Fetch all categories related to the project
-                $categories = Category::where('project_id', $project_id)->get()->keyBy('id');
+                // Fetch all categories related to the project where isRemoved is 0
+                $categories = Category::where('project_id', $project_id)
+                                      ->where('isRemoved', '0')
+                                      ->get()
+                                      ->keyBy('id');
         
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get();
@@ -1014,6 +1045,11 @@ class PController extends Controller
         
                 // Sort the tasks based on the custom order
                 $sortedTasks = $tasks->sort(function ($a, $b) use ($categories) {
+                    // Check if category_id exists in the categories collection
+                    if (!isset($categories[$a->category_id]) || !isset($categories[$b->category_id])) {
+                        return 0; // If either category_id is not found, consider them equal
+                    }
+        
                     $posA = array_search($categories[$a->category_id]->category_name, $categories->pluck('category_name')->toArray());
                     $posB = array_search($categories[$b->category_id]->category_name, $categories->pluck('category_name')->toArray());
         
@@ -1061,10 +1097,9 @@ class PController extends Controller
                         $task->previousCostTask = $previousCostTask;
                         $task->thisPeriodCostTask = $thisPeriodCostTask;
                         $task->toDateCostTask = $toDateCostTask;
-        
-                        // Remove unwanted fields
-                        unset($task->pt_status, $task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at, $task->resources);
-        
+                        
+                        unset($task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at);
+
                         return $task;
                     });
         
@@ -1106,7 +1141,12 @@ class PController extends Controller
                     ];
         
                     // Only add 'progress' if the task status is 'C'
-                    $completedTasks = $categoryTasksWithPercentage->where('pt_status', 'C');
+                    $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
+                        return $task->pt_status === 'C';
+                    });
+                    Log::info('Completed Tasks Count: ' . $completedTasks->count()); // Additional logging
+                    Log::info('Completed Tasks: ' . $completedTasks->pluck('id')->toJson()); // Log task IDs
+        
                     if ($completedTasks->isNotEmpty()) {
                         $completedBudget = $completedTasks->sum('pt_allocated_budget');
                         $categoryData['progress'] = $categoryAllocatedBudget > 0 ? ($completedBudget / $categoryAllocatedBudget) * 100 : 0;
@@ -1126,7 +1166,6 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
-        
 
 
         
@@ -1616,55 +1655,8 @@ class PController extends Controller
         }
     }
 
-
-
   
-    public function refreshTables()
-    {
-        try {
-            // Start the transaction
-            DB::beginTransaction();
 
-            // Disable foreign key checks
-            DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-            // Refresh used_resources table
-            DB::table('used_resources')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('used_resources')->insert([...]);
-
-            // Refresh resources table
-            DB::table('resources')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('resources')->insert([...]);
-
-            // Refresh project_task table
-            DB::table('project_tasks')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('project_task')->insert([...]);
-
-            // Re-enable foreign key checks
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-
-            // Commit the transaction
-            DB::commit();
-
-            return response()->json(['message' => 'Tables refreshed successfully'], 200);
-        } catch (\Exception $e) {
-            // Rollback the transaction if any operation fails
-            DB::rollBack();
-
-            // Re-enable foreign key checks in case of an error
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-
-            // Log the error
-            Log::error('Failed to refresh tables: ' . $e->getMessage());
-
-            return response()->json(['message' => 'Failed to refresh tables', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-  
     public function editTask(Request $request, $taskId)
     {
         $user = Auth::user();
@@ -1680,11 +1672,11 @@ class PController extends Controller
             'pt_task_name' => 'nullable|string|max:255',
             'pt_completion_date' => 'nullable|date',
             'pt_starting_date' => 'nullable|date',
-            'pt_photo_task' => 'nullable|string', // base64 encoded image
+            'pt_allocated_budget' => 'nullable|numeric', // allocated budget
         ]);
     
         // Check if all submitted fields are null
-        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_photo_task'])) {
+        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_allocated_budget'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'No fields to update'
@@ -1696,7 +1688,7 @@ class PController extends Controller
         try {
             $task = Task::findOrFail($taskId);
     
-            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task']);
+            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget']);
     
             // Handle task status based on completion date
             if (!empty($validatedData['pt_completion_date'])) {
@@ -1710,34 +1702,12 @@ class PController extends Controller
                 }
             }
     
-            // Decode the base64 image and save it
-            if (!empty($validatedData['pt_photo_task'])) {
-                $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
-                if ($decodedImage === false) {
-                    Log::error('Invalid base64 image');
-                    throw new \Exception('Invalid base64 image');
-                }
-    
-                // Ensure the directory exists
-                $imageName = time() . '.webp';
-                $imagePath = storage_path('app/public/photos/tasks/' . $imageName);
-                if (!file_exists(dirname($imagePath))) {
-                    mkdir(dirname($imagePath), 0755, true);
-                }
-    
-                // Save the decoded image to a file or storage
-                file_put_contents($imagePath, $decodedImage);
-    
-                $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
-                $validatedData['pt_photo_task'] = $photoPath;
-            }
-    
             // Prepare the update array
             $updateData = array_filter([
                 'pt_task_name' => $validatedData['pt_task_name'],
                 'pt_completion_date' => $validatedData['pt_completion_date'],
                 'pt_starting_date' => $validatedData['pt_starting_date'],
-                'pt_photo_task' => $validatedData['pt_photo_task'] ?? $task->pt_photo_task,
+                'pt_allocated_budget' => $validatedData['pt_allocated_budget'] ?? $task->pt_allocated_budget,
                 'pt_status' => $validatedData['pt_status'] ?? $task->pt_status,
                 'updated_by' => $user->id,
             ], function ($value) {
@@ -1746,7 +1716,7 @@ class PController extends Controller
     
             $task->update($updateData);
     
-            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_status']);
+            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget', 'pt_status']);
     
             AuditLogT::create([
                 'task_id' => $task->id,
@@ -1884,7 +1854,10 @@ class PController extends Controller
                     'staff_profiles.first_name', 
                     'staff_profiles.last_name',
                     'project_tasks.pt_task_name as task_name',
-                    'categories.category_name as category_name'
+                    'categories.category_name as category_name',
+                    'project_tasks.pt_starting_date', 
+                    'project_tasks.pt_completion_date',
+                    'project_tasks.pt_status'
                 ]);
     
             // Initialize an array to store images and resources grouped by their upload dates and categories
@@ -1923,7 +1896,10 @@ class PController extends Controller
                         'description' => $record->description,
                         'used_budget' => $record->estimated_resource_value,
                         'staff_name' => $record->first_name . ' ' . $record->last_name,
-                        'task_name' => $record->task_name
+                        'task_name' => $record->task_name,
+                        'pt_starting_date' => $record->pt_starting_date, 
+                        'pt_completion_date' => $record->pt_completion_date,
+                        'pt_status' => $record->pt_status
                     ];
                 }
     
@@ -1934,14 +1910,20 @@ class PController extends Controller
                 }
             }
     
-            // Fetch resources that don't have a matching image upload date
+            // Fetch resources along with their task categories
             $resources = DB::table('used_resources')
                 ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
+                ->leftJoin('project_tasks', 'resources.task_id', '=', 'project_tasks.id')
+                ->leftJoin('categories', 'project_tasks.category_id', '=', 'categories.id')
                 ->whereIn('resources.task_id', $tasks)
                 ->get([
                     'used_resources.resource_qty', 
                     'used_resources.used_resource_name as used_resource_name', 
-                    'used_resources.created_at'
+                    'used_resources.created_at',
+                    'categories.category_name as category_name',
+                    'project_tasks.pt_starting_date', 
+                    'project_tasks.pt_completion_date',
+                    'project_tasks.pt_status'
                 ]);
     
             // Iterate over each resource and group them by their upload date and category
@@ -1949,11 +1931,9 @@ class PController extends Controller
                 $resourceDate = \Carbon\Carbon::parse($resource->created_at);
                 $dayCount = $resourceDate->diffInDays($projectStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $resourceDate->format('Y-m-d');
-                $categoryName = 'Uncategorized'; // Default category for resources without a specific category
+                $categoryName = $resource->category_name ?: 'Uncategorized'; // Default category for resources without a specific category
     
-                Log::info('Processing resource for date: ' . $formattedDate . ' and category: ' . $categoryName);
-                Log::info('Resource Name: ' . $resource->used_resource_name);
-                Log::info('Resource Quantity: ' . $resource->resource_qty);
+
     
                 if (!isset($historyByDateAndCategory[$formattedDate])) {
                     $historyByDateAndCategory[$formattedDate] = [];
@@ -1969,7 +1949,11 @@ class PController extends Controller
                         'description' => null,
                         'used_budget' => null,
                         'staff_name' => null,
-                        'task_name' => null
+                        'task_name' => null,
+                        'pt_starting_date' => $resource->pt_starting_date, 
+                        'pt_completion_date' => $resource->pt_completion_date, 
+                        'pt_status' => $resource->pt_status
+
                     ];
                 }
     
@@ -1990,6 +1974,11 @@ class PController extends Controller
                 }
             }
     
+            // Sort the history array by uploaded_at in descending order
+            usort($history, function($a, $b) {
+                return strtotime($b['uploaded_at']) - strtotime($a['uploaded_at']);
+            });
+    
             // Log the final structure of historyByDateAndCategory
             Log::info('Final historyByDateAndCategory structure: ' . json_encode($historyByDateAndCategory));
     
@@ -2005,7 +1994,4 @@ class PController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the history'], 500);
         }
     }
-
-
-
 }

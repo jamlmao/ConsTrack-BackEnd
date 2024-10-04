@@ -34,6 +34,7 @@ Route::get('/projects/completed-and-ongoing', [PController::class, 'getCompleted
 Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/logout',[AuthController::class, 'logout']);
     Route::post('/registerS', [AController::class, 'createStaff']);
+    Route::post('/staff/create-staff', [AController::class, 'createStaffByAuthorizedStaff']);
     Route::post('/registerC', [AController::class, 'createClient']);
     Route::put('staff/{id}', [AController::class, 'update']);
     Route::post('/addproject', [PController::class, 'addproject']);
@@ -93,8 +94,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']); 
     
 
-    Route::post('/send-otp', [AController::class, 'sendOtp']); // to do
-    Route::post('/update-password', [AController::class, 'updatePassword']); // to do
+
     Route::get('/getStaff', [AController::class, 'getAllStaff']); //not rendered Admin
     Route::get('/counts', [AController::class, 'getUserCounts']); //not rendered Admin
     Route::get('/projects', [PController::class, 'getAllProjectsFilteredByCompanies']); //not rendered admin
@@ -126,5 +126,8 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     
     Route::get('/history/{projectId}', [PController::class, 'getProjectHistory']);
     Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
+    Route::post('/admin/update-password', [AController::class, 'updatePassword']);
     Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);
+    Route::get('/client/available-dates', [AppointmentController::class, 'getAvailableDatesWithStatus']);
+    Route::put('/category/remove/{categoryId}', [CategoryController::class, 'removeCategory']);
 });
