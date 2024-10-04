@@ -94,8 +94,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/ProjectDetails/{projectId}', [PController::class, 'getProjectAndClientDetails']); 
     
 
-    Route::post('/send-otp', [AController::class, 'sendOtp']); // to do
-    Route::post('/update-password', [AController::class, 'updatePassword']); // to do
+
     Route::get('/getStaff', [AController::class, 'getAllStaff']); //not rendered Admin
     Route::get('/counts', [AController::class, 'getUserCounts']); //not rendered Admin
     Route::get('/projects', [PController::class, 'getAllProjectsFilteredByCompanies']); //not rendered admin
@@ -129,4 +128,6 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
     Route::post('/admin/update-password', [AController::class, 'updatePassword']);
     Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);
+    Route::get('/client/available-dates', [AppointmentController::class, 'getAvailableDatesWithStatus']);
+    Route::put('/category/remove/{categoryId}', [CategoryController::class, 'removeCategory']);
 });

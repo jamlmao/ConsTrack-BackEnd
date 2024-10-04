@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('category_name');
             $table->unsignedBigInteger('project_id'); 
             $table->integer('c_allocated_budget');
+            $table->enum('isRemoved', ['1', '0'])->default('0');
             $table->timestamps();
 
             $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');

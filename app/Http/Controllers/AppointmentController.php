@@ -383,7 +383,31 @@ class AppointmentController extends Controller
     }
 
 
+        public function getAvailableDatesWithStatus()
+    {
+        $user = auth()->user();
+        $companyId = $user->clientProfile->company_id;
 
+        $currentMonth = Carbon::now()->month;
+        $currentYear = Carbon::now()->year;
+
+        $availableDates = AvailableDate::whereHas('staff', function ($query) use ($companyId) {
+            $query->where('company_id', $companyId);
+        })
+        ->whereMonth('available_date', $currentMonth)
+        ->whereYear('available_date', $currentYear)
+        ->get()
+        ->map(function ($availableDate) {
+            $appointmentsCount = Appointment::whereDate('appointment_datetime', $availableDate->available_date)
+                ->where('appointments.staff_id', $availableDate->staff_id)
+                ->count();
+
+            $availableDate->status = $appointmentsCount > 0 ? 'Taken' : 'Available';
+            return $availableDate;
+        });
+
+        return response()->json(['available_dates' => $availableDates]);
+    }
 
     public function getAvailableDates2()
     {

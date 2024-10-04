@@ -86,6 +86,54 @@ class CategoryController extends Controller
         }
     }
 
+    public function removeCategory(Request $request, $categoryId)
+    {
+        try {
+            // Start a database transaction
+            DB::beginTransaction();
+
+            // Get the project ID from the request
+            $projectId = $request->input('project_id');
+            if (!$projectId) {
+                return response()->json([
+                    'message' => 'Project ID is required',
+                ], 400);
+            }
+
+            // Find the category by its ID
+            $category = Category::findOrFail($categoryId);
+
+            // Verify that the category belongs to the specified project
+            if ($category->project_id != $projectId) {
+                return response()->json([
+                    'message' => 'Category does not belong to the specified project',
+                ], 403);
+            }
+
+            // Update the isRemoved column to 1
+            $category->isRemoved = 1;
+            $category->save();
+
+            // Commit the transaction
+            DB::commit();
+
+            // Return a success response
+            return response()->json([
+                'message' => 'Category removed successfully',
+                'category' => $category
+            ], 200);
+        } catch (Exception $e) {
+            // Roll back the transaction and log the error
+            DB::rollBack();
+            Log::error('Failed to remove category: ' . $e->getMessage());
+
+            // Return a failure response
+            return response()->json([
+                'message' => 'Failed to remove category',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
 
 }

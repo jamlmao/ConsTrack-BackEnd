@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log; 
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use App\Mail\PasswordChange;
 use Carbon\Carbon;
 use App\Models\Project;
 use App\Models\Company;
@@ -891,16 +892,17 @@ class AController extends Controller
 
 
 
+
     public function updatePassword(Request $request)
     {
         // Authenticate the user
         $authenticatedUser = Auth::user();
-
+    
         // Validate the request data
         $validatedData = $request->validate([
-            'user_id' => 'required|exists:users,id',
-            'new_password' => [
-                'required',
+            'client_id' => 'required|exists:client_profiles,id',
+            'password' => [
+                'nullable',
                 'string',
                 'min:8',
                 'regex:/[A-Z]/', // must contain at least one uppercase letter
@@ -908,51 +910,107 @@ class AController extends Controller
                 'regex:/[0-9]/', // must contain at least one digit
                 'regex:/[@$!%*?&#]/' // must contain a special character
             ],
+            'name' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'first_name' => 'nullable|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'phone_number' => 'nullable|string|max:20',
+            'zipcode' => 'nullable|string|max:20',
+            'country' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:255',
         ]);
-
-        // Check if the authenticated user is an admin or the user themselves (staff)
-        if ($authenticatedUser->role !== 'admin' && $authenticatedUser->role !== 'staff' && $authenticatedUser->id !== $validatedData['user_id']) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthorized'
-            ], 403);
-        }
-
+    
         // Begin a database transaction
         DB::beginTransaction();
-
+    
         try {
-            // Find the user by ID
-            $user = User::findOrFail($validatedData['user_id']);
-
-            // Update the user's password
-            $user->password = bcrypt($validatedData['new_password']);
-
-            // Save the changes
+            // Find the ClientProfile by client_id
+            $clientProfile = ClientProfile::findOrFail($validatedData['client_id']);
+    
+            // Retrieve the associated user_id from the ClientProfile
+            $user_id = $clientProfile->user_id;
+    
+            // Check if the authenticated user is an admin or the user themselves (staff)
+            if ($authenticatedUser->role !== 'admin' && $authenticatedUser->role !== 'staff' && $authenticatedUser->id !== $user_id) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
+            }
+    
+            // Find the user by user_id
+            $user = User::findOrFail($user_id);
+    
+            // Flag to check if the password was updated
+            $passwordUpdated = false;
+    
+            // Update the user's data if provided
+            if (isset($validatedData['password'])) {
+                $user->password = bcrypt($validatedData['password']);
+                $passwordUpdated = true;
+            }
+            if (isset($validatedData['name'])) {
+                $user->name = $validatedData['name'];
+            }
+            if (isset($validatedData['email'])) {
+                $user->email = $validatedData['email'];
+            }
             $user->save();
-
+    
+            // Update the client's profile data if provided
+            if (isset($validatedData['first_name'])) {
+                $clientProfile->first_name = $validatedData['first_name'];
+            }
+            if (isset($validatedData['last_name'])) {
+                $clientProfile->last_name = $validatedData['last_name'];
+            }
+            if (isset($validatedData['phone_number'])) {
+                $clientProfile->phone_number = $validatedData['phone_number'];
+            }
+            if (isset($validatedData['zipcode'])) {
+                $clientProfile->zipcode = $validatedData['zipcode'];
+            }
+            if (isset($validatedData['country'])) {
+                $clientProfile->country = $validatedData['country'];
+            }
+            if (isset($validatedData['address'])) {
+                $clientProfile->address = $validatedData['address'];
+            }
+            if (isset($validatedData['city'])) {
+                $clientProfile->city = $validatedData['city'];
+            }
+            $clientProfile->save();
+    
+            // Fetch the company name using the company_id from the ClientProfile
+            $company = Company::findOrFail($clientProfile->company_id);
+            $companyName = $company->company_name;
+            Log::info('email Sent '. $user->email);
+            // Send the new password to the client via email if the password was updated
+            if ($passwordUpdated) {
+                Mail::to($user->email)->send(new PasswordChange($validatedData['password'], $companyName));
+            }
+           
             // Commit the transaction
             DB::commit();
-
+    
             // Return a success response
             return response()->json([
                 'status' => true,
-                'message' => 'Password updated successfully'
+                'message' => 'Password and user details updated successfully'
             ], 200);
         } catch (\Exception $e) {
             // Rollback the transaction in case of an error
             DB::rollBack();
-
+    
             // Return an error response
             return response()->json([
                 'status' => false,
-                'message' => 'Failed to update password',
+                'message' => 'Failed to update password and user details',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
-
-
 
 
 

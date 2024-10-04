@@ -1029,8 +1029,11 @@ class PController extends Controller
         public function getSortedProjectTasks3($project_id)
         {
             try {
-                // Fetch all categories related to the project
-                $categories = Category::where('project_id', $project_id)->get()->keyBy('id');
+                // Fetch all categories related to the project where isRemoved is 0
+                $categories = Category::where('project_id', $project_id)
+                                      ->where('isRemoved', '0')
+                                      ->get()
+                                      ->keyBy('id');
         
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)->get();
@@ -1042,6 +1045,11 @@ class PController extends Controller
         
                 // Sort the tasks based on the custom order
                 $sortedTasks = $tasks->sort(function ($a, $b) use ($categories) {
+                    // Check if category_id exists in the categories collection
+                    if (!isset($categories[$a->category_id]) || !isset($categories[$b->category_id])) {
+                        return 0; // If either category_id is not found, consider them equal
+                    }
+        
                     $posA = array_search($categories[$a->category_id]->category_name, $categories->pluck('category_name')->toArray());
                     $posB = array_search($categories[$b->category_id]->category_name, $categories->pluck('category_name')->toArray());
         
@@ -1089,10 +1097,9 @@ class PController extends Controller
                         $task->previousCostTask = $previousCostTask;
                         $task->thisPeriodCostTask = $thisPeriodCostTask;
                         $task->toDateCostTask = $toDateCostTask;
-        
-                        // Remove unwanted fields
-                        unset($task->pt_status, $task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at, $task->resources);
-        
+                        
+                        unset($task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at);
+
                         return $task;
                     });
         
@@ -1134,7 +1141,12 @@ class PController extends Controller
                     ];
         
                     // Only add 'progress' if the task status is 'C'
-                    $completedTasks = $categoryTasksWithPercentage->where('pt_status', 'C');
+                    $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
+                        return $task->pt_status === 'C';
+                    });
+                    Log::info('Completed Tasks Count: ' . $completedTasks->count()); // Additional logging
+                    Log::info('Completed Tasks: ' . $completedTasks->pluck('id')->toJson()); // Log task IDs
+        
                     if ($completedTasks->isNotEmpty()) {
                         $completedBudget = $completedTasks->sum('pt_allocated_budget');
                         $categoryData['progress'] = $categoryAllocatedBudget > 0 ? ($completedBudget / $categoryAllocatedBudget) * 100 : 0;
@@ -1154,7 +1166,6 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
-        
 
 
         
@@ -1644,55 +1655,8 @@ class PController extends Controller
         }
     }
 
-
-
   
-    public function refreshTables()
-    {
-        try {
-            // Start the transaction
-            DB::beginTransaction();
 
-            // Disable foreign key checks
-            DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-            // Refresh used_resources table
-            DB::table('used_resources')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('used_resources')->insert([...]);
-
-            // Refresh resources table
-            DB::table('resources')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('resources')->insert([...]);
-
-            // Refresh project_task table
-            DB::table('project_tasks')->truncate();
-            // Optionally, you can seed the table or perform other operations
-            // DB::table('project_task')->insert([...]);
-
-            // Re-enable foreign key checks
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-
-            // Commit the transaction
-            DB::commit();
-
-            return response()->json(['message' => 'Tables refreshed successfully'], 200);
-        } catch (\Exception $e) {
-            // Rollback the transaction if any operation fails
-            DB::rollBack();
-
-            // Re-enable foreign key checks in case of an error
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-
-            // Log the error
-            Log::error('Failed to refresh tables: ' . $e->getMessage());
-
-            return response()->json(['message' => 'Failed to refresh tables', 'error' => $e->getMessage()], 500);
-        }
-    }
-
-  
     public function editTask(Request $request, $taskId)
     {
         $user = Auth::user();
@@ -1708,11 +1672,11 @@ class PController extends Controller
             'pt_task_name' => 'nullable|string|max:255',
             'pt_completion_date' => 'nullable|date',
             'pt_starting_date' => 'nullable|date',
-            'pt_photo_task' => 'nullable|string', // base64 encoded image
+            'pt_allocated_budget' => 'nullable|numeric', // allocated budget
         ]);
     
         // Check if all submitted fields are null
-        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_photo_task'])) {
+        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_allocated_budget'])) {
             return response()->json([
                 'status' => false,
                 'message' => 'No fields to update'
@@ -1724,7 +1688,7 @@ class PController extends Controller
         try {
             $task = Task::findOrFail($taskId);
     
-            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task']);
+            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget']);
     
             // Handle task status based on completion date
             if (!empty($validatedData['pt_completion_date'])) {
@@ -1738,34 +1702,12 @@ class PController extends Controller
                 }
             }
     
-            // Decode the base64 image and save it
-            if (!empty($validatedData['pt_photo_task'])) {
-                $decodedImage = base64_decode($validatedData['pt_photo_task'], true);
-                if ($decodedImage === false) {
-                    Log::error('Invalid base64 image');
-                    throw new \Exception('Invalid base64 image');
-                }
-    
-                // Ensure the directory exists
-                $imageName = time() . '.webp';
-                $imagePath = storage_path('app/public/photos/tasks/' . $imageName);
-                if (!file_exists(dirname($imagePath))) {
-                    mkdir(dirname($imagePath), 0755, true);
-                }
-    
-                // Save the decoded image to a file or storage
-                file_put_contents($imagePath, $decodedImage);
-    
-                $photoPath = asset('storage/photos/tasks/' . $imageName); // Set the photo path
-                $validatedData['pt_photo_task'] = $photoPath;
-            }
-    
             // Prepare the update array
             $updateData = array_filter([
                 'pt_task_name' => $validatedData['pt_task_name'],
                 'pt_completion_date' => $validatedData['pt_completion_date'],
                 'pt_starting_date' => $validatedData['pt_starting_date'],
-                'pt_photo_task' => $validatedData['pt_photo_task'] ?? $task->pt_photo_task,
+                'pt_allocated_budget' => $validatedData['pt_allocated_budget'] ?? $task->pt_allocated_budget,
                 'pt_status' => $validatedData['pt_status'] ?? $task->pt_status,
                 'updated_by' => $user->id,
             ], function ($value) {
@@ -1774,7 +1716,7 @@ class PController extends Controller
     
             $task->update($updateData);
     
-            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_status']);
+            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget', 'pt_status']);
     
             AuditLogT::create([
                 'task_id' => $task->id,
