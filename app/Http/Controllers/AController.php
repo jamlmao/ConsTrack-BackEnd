@@ -169,6 +169,119 @@ class AController extends Controller
         }
     }
 
+    
+
+    public function createStaffByAuthorizedStaff(Request $request)
+    {
+        try {
+            $user = Auth::user();
+    
+            // Check if the authenticated user is a staff member with an extension_name and license_number
+            if ($user->role !== 'staff' || !$user->staffProfile || !$user->staffProfile->extension_name || !$user->staffProfile->license_number) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized: Staff member does not have the required extension_name and license_number'
+                ], 403);
+            }
+    
+            // Validate the request data
+            $validate = Validator::make($request->all(), [
+                'name' => 'required|string|max:255|unique:users',
+                'email' => 'required|string|email|max:255|unique:users',
+                'password' => [
+                    'required',
+                    'string',
+                    'min:8',
+                    'regex:/[A-Z]/', // must contain at least one uppercase letter
+                    'regex:/[a-z]/', // must contain at least one lowercase letter
+                    'regex:/[0-9]/', // must contain at least one digit
+                    'regex:/[@$!%*?&#]/' // must contain a special character
+                ],
+                'first_name' => 'required|string|max:255',
+                'last_name' => 'required|string|max:255',
+                'sex' => 'required|in:M,F',
+                'address' => 'required|string|max:255',
+                'city' => 'required|string|max:255',
+                'country' => 'required|string|max:255',
+                'zipcode' => 'required|string|max:10',
+                'phone_number' => 'required|string|max:15|unique:staff_profiles',
+            ]);
+    
+            if ($validate->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'errors' => $validate->errors(),
+                    'message' => 'Validation Error'
+                ], 422);
+            }
+    
+            DB::beginTransaction(); // Start the transaction
+    
+            // Fetch the company information from the authenticated user's profile
+            $company = $user->staffProfile->company;
+    
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role' => 'staff', // Default role set to staff
+                'status' => 'Not Active' // not active or still not use 
+            ]);
+    
+            // Create staff profile
+            $staffProfile = StaffProfile::create([
+                'user_id' => $user->id,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'sex' => $request->sex,
+                'address' => $request->address,
+                'city' => $request->city,
+                'country' => $request->country,
+                'zipcode' => $request->zipcode,
+                'phone_number' => $request->phone_number,
+                'company_id' => $company->id,
+                'extension_name' => '',
+                'license_number' => '',
+            ]);
+    
+            // Log the creation of the staff profile
+            AuditLog::create([
+                'user_id' => $user->id,
+                'editor_id' => auth()->user()->id, // Assuming the editor is the authenticated user
+                'action' => 'create',
+                'old_values' => null,
+                'new_values' => json_encode([
+                    'first_name' => $request->first_name,
+                    'last_name' => $request->last_name,
+                    'sex' => $request->sex,
+                    'address' => $request->address,
+                    'city' => $request->city,
+                    'country' => $request->country,
+                    'zipcode' => $request->zipcode,
+                    'company_name' => $company->company_name,
+                    'phone_number' => $request->phone_number,
+                    'company_logo' => $company->company_logo, // Add company logo path to the log
+                ]),
+            ]);
+    
+            DB::commit(); // Commit the transaction
+    
+            return response()->json([
+                'status' => true,
+                'message' => 'Staff registered successfully',
+                'user' => $user,
+                'staff_profile' => $staffProfile
+            ], 201);
+        } catch (\Throwable $th) {
+            DB::rollBack(); // Rollback the transaction in case of error
+            return response()->json([
+                'status' => false,
+                'message' => $th->getMessage()
+            ], 500);
+        }
+    }
+
+
 
 
     public function createClient(Request $request)
@@ -271,7 +384,10 @@ class AController extends Controller
                     'first_name' => $clientProfile->first_name,
                     'last_name' => $clientProfile->last_name,
                 ],
-                'company' => $company
+                'company' => [
+                                'id' => $company->id,
+                                'company_name' => $company->company_name
+                            ]
             ], 201);
         } catch (\Throwable $th) {
             DB::rollBack();
@@ -775,25 +891,14 @@ class AController extends Controller
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     public function updatePassword(Request $request)
     {
-        $user = Auth::user();
-    
+        // Authenticate the user
+        $authenticatedUser = Auth::user();
+
         // Validate the request data
         $validatedData = $request->validate([
-            'otp' => 'required|string',
+            'user_id' => 'required|exists:users,id',
             'new_password' => [
                 'required',
                 'string',
@@ -804,21 +909,56 @@ class AController extends Controller
                 'regex:/[@$!%*?&#]/' // must contain a special character
             ],
         ]);
-    
-        // Check if the OTP is correct and not expired
-        if ($user->otp !== $validatedData['otp'] || now()->greaterThan($user->otp_expires_at)) {
-            return response()->json(['message' => 'Invalid or expired OTP'], 400);
-        }
-    
-        // Update the user's password
-        $user->password = bcrypt($validatedData['new_password']);
-        $user->otp = null; // Clear the OTP
-        $user->otp_expires_at = null; // Clear the OTP expiration time
-        $user->save();
-    
-        return response()->json(['message' => 'Password updated successfully'], 200);
-    }  
 
+        // Check if the authenticated user is an admin or the user themselves (staff)
+        if ($authenticatedUser->role !== 'admin' && $authenticatedUser->role !== 'staff' && $authenticatedUser->id !== $validatedData['user_id']) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
+
+        // Begin a database transaction
+        DB::beginTransaction();
+
+        try {
+            // Find the user by ID
+            $user = User::findOrFail($validatedData['user_id']);
+
+            // Update the user's password
+            $user->password = bcrypt($validatedData['new_password']);
+
+            // Save the changes
+            $user->save();
+
+            // Commit the transaction
+            DB::commit();
+
+            // Return a success response
+            return response()->json([
+                'status' => true,
+                'message' => 'Password updated successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            // Rollback the transaction in case of an error
+            DB::rollBack();
+
+            // Return an error response
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to update password',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+
+
+
+
+
+    
     public function getUserCounts() //user accounts and projects
     {
         try {

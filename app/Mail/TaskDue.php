@@ -12,15 +12,16 @@ class TaskDue extends Mailable
     use Queueable, SerializesModels;
 
     public $task;
-
+    public $clientCompanyName;
     /**
      * Create a new message instance.
      *
      * @param $task
      */
-    public function __construct($task)
+    public function __construct($task,$clientCompanyName)
     {
         $this->task = $task;
+        $this->clientCompanyName = $clientCompanyName;
     }
 
     /**
@@ -30,7 +31,7 @@ class TaskDue extends Mailable
      */
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com', $this->clientCompanyName)
                     ->subject('Due Task')
                     ->view('emails.task_due')
                     ->with(['task' => $this->task]);

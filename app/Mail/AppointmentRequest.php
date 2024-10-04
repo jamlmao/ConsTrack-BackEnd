@@ -11,16 +11,18 @@ class AppointmentRequest extends Mailable
 
     public $clientProfile;
     public $appointment;
+    public $companyName;
 
     /**
      * Create a new message instance.
      *
      * @return void
      */
-    public function __construct($clientProfile, $appointment)
+    public function __construct($clientProfile, $appointment, $companyName)
     {
         $this->clientProfile = $clientProfile;
         $this->appointment = $appointment;
+        $this->companyName = $companyName;
     }
 
     /**
@@ -30,12 +32,13 @@ class AppointmentRequest extends Mailable
      */
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com', $this->companyName)
                     ->subject('New Appointment Request')
                     ->view('emails.appointment_request')
                     ->with([
                         'clientProfile' => $this->clientProfile,
                         'appointment' => $this->appointment,
+                        'companyName' => $this->companyName,
                     ]);
     }
 }

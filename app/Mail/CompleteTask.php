@@ -12,15 +12,18 @@ class CompleteTask extends Mailable
     use Queueable, SerializesModels;
 
     public $task;
+    public $companyName;
 
     /**
      * Create a new message instance.
      *
      * @param $task
+     * @param $companyName
      */
-    public function __construct($task)
+    public function __construct($task, $companyName)
     {
         $this->task = $task;
+        $this->companyName = $companyName;
     }
 
     /**
@@ -30,9 +33,12 @@ class CompleteTask extends Mailable
      */
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com', $this->companyName)
                     ->subject('Task Completed')
                     ->view('emails.complete_task')
-                    ->with(['task' => $this->task]);
+                    ->with([
+                        'task' => $this->task,
+                        'companyName' => $this->companyName,
+                    ]);
     }
 }

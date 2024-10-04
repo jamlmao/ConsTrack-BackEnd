@@ -449,10 +449,16 @@ class PController extends Controller
              $completionDate = Carbon::parse($validatedData['pt_completion_date']);
              $currentDate = Carbon::now();
      
-             if ($completionDate->diffInDays($currentDate, false) < -1) {
+             Log::info('Completion Date: ' . $completionDate);
+             Log::info('Current Date: ' . $currentDate);
+             Log::info('Difference in Days: ' . $completionDate->diffInDays($currentDate, false));
+     
+             if ($completionDate->diffInDays($currentDate, false) >= 1) {
                  $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date is more than one day in the past
+                 Log::info('Status set to D');
              } else {
                  $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                 Log::info('Status set to OG');
              }
      
              // Create a new task with the validated data and calculated allocated budget
@@ -471,21 +477,43 @@ class PController extends Controller
              // Fetch the staff and client emails from the users table
              $staffUser = User::findOrFail($staffUserId);
              $clientUser = User::findOrFail($clientUserId);
+             $staffProfile = StaffProfile::where('user_id', $staffUserId)->firstOrFail();
+             $clientProfile = ClientProfile::where('user_id', $clientUserId)->firstOrFail();
+      
              $staffEmail = $staffUser->email;
              $clientEmail = $clientUser->email;
-             Log::info('Client email: ' . $clientEmail); 
-             Log::info('Staff email: ' . $staffEmail);
+             $staffCompanyId = $staffProfile->company_id;
+             $clientCompanyId = $clientProfile->company_id;
+           
+             // Fetch the company_name for the staff user
+             $staffCompany = Company::find($staffCompanyId);
+             if ($staffCompany) {
+                 $staffCompanyName = $staffCompany->company_name;
+                 Log::info('Staff company name: ' . $staffCompanyName);
+             } else {
+                 Log::warning('Staff company not found for company_id: ' . $staffUser->company_id);
+             }
+     
+             // Fetch the company_name for the client user
+             $clientCompany = Company::find($clientCompanyId);
+             if ($clientCompany) {
+                 $clientCompanyName = $clientCompany->company_name;
+                 Log::info('Client company name: ' . $clientCompanyName);
+             } else {
+                 Log::warning('Client company not found for company_id: ' . $clientUser->company_id);
+             }
      
              // Check if the task is due tomorrow
-             if ($completionDate->isTomorrow()) {
-                 Mail::to($staffEmail)->send(new TaskDueTomorrow($task));
-             }
+             if ($completionDate->isTomorrow() && isset($staffCompanyName)) {
+                Mail::to($staffEmail)->send(new TaskDueTomorrow($task, $staffCompanyName));
+            }
      
              // Check if the task is past the completion date with a one-day clearance
-             if ($completionDate->diffInDays($currentDate, false) < -1) {
-                 $validatedData['pt_status'] = 'D'; // Mark as due
-                 Mail::to($clientEmail)->send(new TaskDue($task));
-             }
+             if ($completionDate->diffInDays($currentDate, false) >= 1 && isset($clientCompanyName)) {
+                $validatedData['pt_status'] = 'D'; // Mark as due
+                Log::info('Status set to D before sending email');
+                Mail::to($clientEmail)->send(new TaskDue($task, $clientCompanyName));
+            }
      
              DB::commit();
              return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);

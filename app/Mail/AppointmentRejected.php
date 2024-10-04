@@ -14,6 +14,7 @@ class AppointmentRejected extends Mailable
 
     public $appointment;
     public $availableDates;
+    public $company;
     /**
      * Create a new message instance.
      *
@@ -21,19 +22,23 @@ class AppointmentRejected extends Mailable
      */
 
 
-    public function __construct(Appointment $appointment, $availableDates)
-    {
-        $this->appointment = $appointment;
-        $this->availableDates = $availableDates;
-    }
+     public function __construct($appointment, $availableDates, $companyName, $availableDate)
+     {
+         $this->appointment = $appointment;
+         $this->availableDates = $availableDates;
+         $this->companyName = $companyName;
+         $this->availableDate = $availableDate;
+     }
 
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com', $this->companyName)
                     ->view('emails.appointmentRejected')
                     ->with([
                         'appointment' => $this->appointment,
-                        'availableDates' => $this->availableDates
+                        'availableDates' => $this->availableDates,
+                        'companyName' => $this->companyName,
+                        'availableDate' => $this->availableDate,
                     ]);
     }
 }

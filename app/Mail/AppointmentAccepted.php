@@ -19,10 +19,13 @@ class AppointmentAccepted extends Mailable
      *
      * @return void
      */
-    public function __construct(Appointment $appointment)
+    public function __construct($appointment, $companyName, $availableDate)
     {
         $this->appointment = $appointment;
+        $this->companyName = $companyName;
+        $this->availableDate = $availableDate;
     }
+    
 
     /**
      * Build the message.
@@ -31,8 +34,13 @@ class AppointmentAccepted extends Mailable
      */
     public function build()
     {
-        return $this->from('your-email@example.com', 'Constrack')
+        return $this->from('your-email@example.com',  $this->companyName)
                     ->subject('Appointment Accepted')
-                    ->view('emails.appointmentAccepted');
+                    ->view('emails.appointmentAccepted')
+                    ->with([
+                        'appointment' => $this->appointment,
+                        'companyName' => $this->companyName,
+                        'availableDate' => $this->availableDate,
+                    ]);
     }
 }

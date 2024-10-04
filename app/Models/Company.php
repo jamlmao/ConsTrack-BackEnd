@@ -11,5 +11,8 @@ class Company extends Model
 
     protected $fillable = ['company_name'];
 
-
+    public function clientProfiles()
+    {
+        return $this->hasMany(ClientProfile::class, 'company_id');
+    }
 }
