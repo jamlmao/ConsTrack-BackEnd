@@ -1854,7 +1854,10 @@ class PController extends Controller
                     'staff_profiles.first_name', 
                     'staff_profiles.last_name',
                     'project_tasks.pt_task_name as task_name',
-                    'categories.category_name as category_name'
+                    'categories.category_name as category_name',
+                    'project_tasks.pt_starting_date', 
+                    'project_tasks.pt_completion_date',
+                    'project_tasks.pt_status'
                 ]);
     
             // Initialize an array to store images and resources grouped by their upload dates and categories
@@ -1893,7 +1896,10 @@ class PController extends Controller
                         'description' => $record->description,
                         'used_budget' => $record->estimated_resource_value,
                         'staff_name' => $record->first_name . ' ' . $record->last_name,
-                        'task_name' => $record->task_name
+                        'task_name' => $record->task_name,
+                        'pt_starting_date' => $record->pt_starting_date, 
+                        'pt_completion_date' => $record->pt_completion_date,
+                        'pt_status' => $record->pt_status
                     ];
                 }
     
@@ -1914,7 +1920,10 @@ class PController extends Controller
                     'used_resources.resource_qty', 
                     'used_resources.used_resource_name as used_resource_name', 
                     'used_resources.created_at',
-                    'categories.category_name as category_name'
+                    'categories.category_name as category_name',
+                    'project_tasks.pt_starting_date', 
+                    'project_tasks.pt_completion_date',
+                    'project_tasks.pt_status'
                 ]);
     
             // Iterate over each resource and group them by their upload date and category
@@ -1924,9 +1933,7 @@ class PController extends Controller
                 $formattedDate = $resourceDate->format('Y-m-d');
                 $categoryName = $resource->category_name ?: 'Uncategorized'; // Default category for resources without a specific category
     
-                Log::info('Processing resource for date: ' . $formattedDate . ' and category: ' . $categoryName);
-                Log::info('Resource Name: ' . $resource->used_resource_name);
-                Log::info('Resource Quantity: ' . $resource->resource_qty);
+
     
                 if (!isset($historyByDateAndCategory[$formattedDate])) {
                     $historyByDateAndCategory[$formattedDate] = [];
@@ -1942,7 +1949,11 @@ class PController extends Controller
                         'description' => null,
                         'used_budget' => null,
                         'staff_name' => null,
-                        'task_name' => null
+                        'task_name' => null,
+                        'pt_starting_date' => $resource->pt_starting_date, 
+                        'pt_completion_date' => $resource->pt_completion_date, 
+                        'pt_status' => $resource->pt_status
+
                     ];
                 }
     
@@ -1963,6 +1974,11 @@ class PController extends Controller
                 }
             }
     
+            // Sort the history array by uploaded_at in descending order
+            usort($history, function($a, $b) {
+                return strtotime($b['uploaded_at']) - strtotime($a['uploaded_at']);
+            });
+    
             // Log the final structure of historyByDateAndCategory
             Log::info('Final historyByDateAndCategory structure: ' . json_encode($historyByDateAndCategory));
     
@@ -1978,6 +1994,4 @@ class PController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the history'], 500);
         }
     }
-
-
 }

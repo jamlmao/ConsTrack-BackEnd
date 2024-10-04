@@ -255,13 +255,14 @@ class TaskController extends Controller
     
 
 
-        public function getTaskImages($taskId)
+  
+    public function getTaskImages($taskId)
     {
         try {
             // Find the task by ID
             $task = Task::findOrFail($taskId);
             Log::info('Task found: ' . $taskId);
-
+    
             // Fetch images and additional details from the task_update_pictures table
             $taskUpdatePictures = DB::table('task_update_pictures')
                 ->leftJoin('resources', 'task_update_pictures.task_id', '=', 'resources.task_id')
@@ -282,27 +283,27 @@ class TaskController extends Controller
                     'staff_profiles.first_name', 
                     'staff_profiles.last_name'
                 ]);
-
+    
             // Initialize an array to store images and resources grouped by their upload dates
             $imagesByDate = [];
-
+    
             // Use a set to track unique images
             $uniqueImages = [];
-
+    
             // Get the task start date
             $taskStartDate = \Carbon\Carbon::parse($task->created_at);
-
+    
             // Iterate over each record and group images by their upload date
             foreach ($taskUpdatePictures as $picture) {
                 $uploadDate = \Carbon\Carbon::parse($picture->created_at);
                 $dayCount = $uploadDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $uploadDate->format('Y-m-d');
-
+    
                 Log::info('Processing picture for date: ' . $formattedDate);
                 Log::info('Description: ' . $picture->description);
                 Log::info('Used Budget: ' . $picture->estimated_resource_value);
                 Log::info('Staff Name: ' . $picture->first_name . ' ' . $picture->last_name);
-
+    
                 if (!isset($imagesByDate[$formattedDate])) {
                     $imagesByDate[$formattedDate] = [
                         'day' => 'Day ' . $dayCount,
@@ -314,14 +315,14 @@ class TaskController extends Controller
                         'staff_name' => $picture->first_name . ' ' . $picture->last_name
                     ];
                 }
-
+    
                 // Add image to the set to ensure uniqueness
                 if (!in_array($picture->tup_photo, $uniqueImages)) {
                     $uniqueImages[] = $picture->tup_photo;
                     $imagesByDate[$formattedDate]['images'][] = $picture->tup_photo;
                 }
             }
-
+    
             // Fetch resources that don't have a matching image upload date
             $resources = DB::table('used_resources')
                 ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
@@ -331,17 +332,17 @@ class TaskController extends Controller
                     'used_resources.used_resource_name as used_resource_name', 
                     'used_resources.created_at'
                 ]);
-
+    
             // Iterate over each resource and group them by their upload date
             foreach ($resources as $resource) {
                 $resourceDate = \Carbon\Carbon::parse($resource->created_at);
                 $dayCount = $resourceDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $resourceDate->format('Y-m-d');
-
+    
                 Log::info('Processing resource for date: ' . $formattedDate);
                 Log::info('Resource Name: ' . $resource->used_resource_name);
                 Log::info('Resource Quantity: ' . $resource->resource_qty);
-
+    
                 if (!isset($imagesByDate[$formattedDate])) {
                     $imagesByDate[$formattedDate] = [
                         'day' => 'Day ' . $dayCount,
@@ -353,7 +354,7 @@ class TaskController extends Controller
                         'staff_name' => null
                     ];
                 }
-
+    
                 $resourceKey = $resource->used_resource_name . '-' . $resource->resource_qty;
                 if (!array_key_exists($resourceKey, $imagesByDate[$formattedDate]['resources'])) {
                     $imagesByDate[$formattedDate]['resources'][$resourceKey] = [
@@ -362,18 +363,23 @@ class TaskController extends Controller
                     ];
                 }
             }
-
+    
             // Convert the associative array to a numeric array
             $images = array_values($imagesByDate);
-
+    
+            // Sort the images array by uploaded_at in descending order
+            usort($images, function($a, $b) {
+                return strtotime($b['uploaded_at']) - strtotime($a['uploaded_at']);
+            });
+    
             // Log the final structure of imagesByDate
             Log::info('Final imagesByDate structure: ' . json_encode($imagesByDate));
-
+    
             // Prepare the response data
             $responseData = [
                 'images' => $images
             ];
-
+    
             // Return the response with the images grouped by their upload dates
             return response()->json(['data' => $responseData], 200);
         } catch (\Exception $e) {
@@ -381,7 +387,6 @@ class TaskController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the images'], 500);
         }
     }
-
 
 
         
