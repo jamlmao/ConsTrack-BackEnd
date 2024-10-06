@@ -1867,7 +1867,7 @@ class PController extends Controller
             $uniqueImages = [];
     
             // Get the project start date
-            $projectStartDate = \Carbon\Carbon::parse($project->created_at);
+            $projectStartDate = \Carbon\Carbon::parse($project->starting_date);
     
             // Iterate over each record and group images by their upload date and category
             foreach ($projectHistory as $record) {
