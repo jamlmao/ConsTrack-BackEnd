@@ -291,14 +291,17 @@ class TaskController extends Controller
             $uniqueImages = [];
     
             // Get the task start date
-            $taskStartDate = \Carbon\Carbon::parse($task->created_at);
+            $taskStartDate = \Carbon\Carbon::parse($task->pt_starting_date)->startOfDay();
+            Log::info('Task start date: ' . $taskStartDate);
     
             // Iterate over each record and group images by their upload date
             foreach ($taskUpdatePictures as $picture) {
-                $uploadDate = \Carbon\Carbon::parse($picture->created_at);
+                $uploadDate = \Carbon\Carbon::parse($picture->created_at)->startOfDay();
+                Log::info('Upload Date: ' . $uploadDate);
                 $dayCount = $uploadDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
+                Log::info('Day Count: ' . $dayCount);
                 $formattedDate = $uploadDate->format('Y-m-d');
-    
+                
                 Log::info('Processing picture for date: ' . $formattedDate);
                 Log::info('Description: ' . $picture->description);
                 Log::info('Used Budget: ' . $picture->estimated_resource_value);
@@ -335,7 +338,7 @@ class TaskController extends Controller
     
             // Iterate over each resource and group them by their upload date
             foreach ($resources as $resource) {
-                $resourceDate = \Carbon\Carbon::parse($resource->created_at);
+                $resourceDate = \Carbon\Carbon::parse($resource->created_at)->startOfDay();
                 $dayCount = $resourceDate->diffInDays($taskStartDate) + 1; // Adding 1 to make it 1-based index
                 $formattedDate = $resourceDate->format('Y-m-d');
     
@@ -387,8 +390,6 @@ class TaskController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the images'], 500);
         }
     }
-
-
         
 
    
