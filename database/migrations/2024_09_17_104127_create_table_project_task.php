@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('pt_photo_task')->nullable();
             $table->string('pt_file_task')->nullable();
             $table->integer('pt_allocated_budget');
+            $table->enum('isRemoved', ['1', '0'])->default('0');
             $table->timestamps();
 
 

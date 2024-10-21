@@ -21,7 +21,7 @@ return new class extends Migration
             $table->json('new_values')->nullable();
           
 
-            $table->foreign('task_id')->references('id')->on('audit_log_task')->onDelete('cascade');
+            $table->foreign('task_id')->references('id')->on('project_tasks')->onDelete('cascade');
             $table->foreign('editor_id')->references('id')->on('users')->onDelete('cascade');
         });
     }

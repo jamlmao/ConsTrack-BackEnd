@@ -748,4 +748,55 @@ class TaskController extends Controller
         }
 
 
+
+        public function removeTask(Request $request, $taskId)
+        {
+            try {
+                // Start a database transaction
+                DB::beginTransaction();
+
+                // Get the project ID from the request
+                $projectId = $request->input('project_id');
+                if (!$projectId) {
+                    return response()->json([
+                        'message' => 'Project ID is required',
+                    ], 400);
+                }
+
+                // Find the task by its ID
+                $task = Task::findOrFail($taskId);
+
+                // Verify that the task belongs to the specified project
+                if ($task->project_id != $projectId) {
+                    return response()->json([
+                        'message' => 'Task does not belong to the specified project',
+                    ], 403);
+                }
+
+                // Update the isRemoved column to 1
+                $task->isRemoved = 1;
+                $task->save();
+
+                // Commit the transaction
+                DB::commit();
+
+                // Return a success response
+                return response()->json([
+                    'message' => 'Task removed successfully',
+                    'task' => $task
+                ], 200);
+            } catch (Exception $e) {
+                // Roll back the transaction and log the error
+                DB::rollBack();
+                Log::error('Failed to remove task: ' . $e->getMessage());
+
+                // Return a failure response
+                return response()->json([
+                    'message' => 'Failed to remove task',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
+        }
+
+
 }

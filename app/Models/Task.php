@@ -19,14 +19,8 @@ class Task extends Model
         'pt_photo_task',
         'pt_file_task',
         'pt_allocated_budget',
-        'update_img',
-        'update_file',
-        'week1_img',
-        'week2_img',
-        'week3_img',
-        'week4_img',
-        'week5_img',
         'category_id',
+        'isRemoved'
 
     ];
 
