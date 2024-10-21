@@ -462,7 +462,10 @@ class PController extends Controller
              }
      
              // Create a new task with the validated data and calculated allocated budget
-             $taskData = array_merge($validatedData, ['pt_allocated_budget' => $validatedData['pt_total_budget']]);
+             $taskData = array_merge($validatedData, [
+                 'pt_allocated_budget' => $validatedData['pt_total_budget'],
+                 'isRemoved' => '0' // Set isRemoved to 0 by default
+             ]);
              $task = Task::create($taskData);
      
              // Add resources to the database if provided
@@ -479,12 +482,12 @@ class PController extends Controller
              $clientUser = User::findOrFail($clientUserId);
              $staffProfile = StaffProfile::where('user_id', $staffUserId)->firstOrFail();
              $clientProfile = ClientProfile::where('user_id', $clientUserId)->firstOrFail();
-      
+     
              $staffEmail = $staffUser->email;
              $clientEmail = $clientUser->email;
              $staffCompanyId = $staffProfile->company_id;
              $clientCompanyId = $clientProfile->company_id;
-           
+     
              // Fetch the company_name for the staff user
              $staffCompany = Company::find($staffCompanyId);
              if ($staffCompany) {
@@ -505,15 +508,15 @@ class PController extends Controller
      
              // Check if the task is due tomorrow
              if ($completionDate->isTomorrow() && isset($staffCompanyName)) {
-                Mail::to($staffEmail)->send(new TaskDueTomorrow($task, $staffCompanyName));
-            }
+                 Mail::to($staffEmail)->send(new TaskDueTomorrow($task, $staffCompanyName));
+             }
      
              // Check if the task is past the completion date with a one-day clearance
              if ($completionDate->diffInDays($currentDate, false) >= 1 && isset($clientCompanyName)) {
-                $validatedData['pt_status'] = 'D'; // Mark as due
-                Log::info('Status set to D before sending email');
-                Mail::to($clientEmail)->send(new TaskDue($task, $clientCompanyName));
-            }
+                 $validatedData['pt_status'] = 'D'; // Mark as due
+                 Log::info('Status set to D before sending email');
+                 Mail::to($clientEmail)->send(new TaskDue($task, $clientCompanyName));
+             }
      
              DB::commit();
              return response()->json(['message' => 'Task created successfully', 'task' => $task, 'resources' => $resources], 201);
@@ -775,6 +778,7 @@ class PController extends Controller
             try {
                 // Fetch all tasks related to the given project ID
                 $tasks = Task::where('project_id', $project_id)
+                ->where('isRemoved', '0')
                 ->with('resources:id,task_id,resource_name,qty,unit_cost,total_cost', 'category:id,category_name')
                 ->get(['id', 'project_id', 'pt_status', 'pt_task_name', 'pt_updated_at', 'pt_completion_date', 'pt_starting_date', 'pt_photo_task', 'pt_allocated_budget', 'created_at', 'updated_at', 'pt_file_task','category_id']);
         
@@ -1036,7 +1040,9 @@ class PController extends Controller
                                       ->keyBy('id');
         
                 // Fetch all tasks related to the given project ID
-                $tasks = Task::where('project_id', $project_id)->get();
+                $tasks = Task::where('project_id', $project_id)
+                             ->where('isRemoved', '0')
+                             ->get();
         
                 $resources = Resources::all()->keyBy('id');
         
@@ -1073,6 +1079,10 @@ class PController extends Controller
         
                     // Calculate the percentage for each task based on the status and budget
                     $categoryTasksWithPercentage = $categoryTasks->map(function ($task) use ($resources) {
+                        if ($task->isRemoved != 0) {
+                            return $task;
+                        }
+        
                         // Fetch the estimated resource values for the task
                         $estimatedCosts = EstimatedCost::where('task_id', $task->id)->get();
                         $totalEstimatedResourceValue = $estimatedCosts->sum('estimated_resource_value');
@@ -1097,9 +1107,9 @@ class PController extends Controller
                         $task->previousCostTask = $previousCostTask;
                         $task->thisPeriodCostTask = $thisPeriodCostTask;
                         $task->toDateCostTask = $toDateCostTask;
-                        
+        
                         unset($task->pt_updated_at, $task->pt_completion_date, $task->pt_starting_date, $task->pt_photo_task, $task->pt_file_task, $task->created_at, $task->updated_at);
-
+        
                         return $task;
                     });
         
@@ -1109,6 +1119,7 @@ class PController extends Controller
                     $previousCost = EstimatedCost::whereIn('task_id', function ($query) use ($categoryId) {
                         $query->select('id')
                             ->from('project_tasks')
+                            ->where('isRemoved', '0')
                             ->where('category_id', $categoryId);
                     })->where('created_at', '<', $currentWeekStart)->sum('estimated_resource_value');
         
@@ -1118,6 +1129,7 @@ class PController extends Controller
                     $thisPeriodCost = EstimatedCost::whereIn('task_id', function ($query) use ($categoryId) {
                         $query->select('id')
                             ->from('project_tasks')
+                            ->where('isRemoved', '0')
                             ->where('category_id', $categoryId);
                     })->whereBetween('created_at', [
                         $currentWeekStart,
@@ -1142,7 +1154,7 @@ class PController extends Controller
         
                     // Only add 'progress' if the task status is 'C'
                     $completedTasks = $categoryTasksWithPercentage->filter(function ($task) {
-                        return $task->pt_status === 'C';
+                        return $task->pt_status === 'C' && $task->isRemoved == 0;
                     });
                     Log::info('Completed Tasks Count: ' . $completedTasks->count()); // Additional logging
                     Log::info('Completed Tasks: ' . $completedTasks->pluck('id')->toJson()); // Log task IDs
@@ -1166,7 +1178,6 @@ class PController extends Controller
                 return response()->json(['message' => 'Failed to fetch and sort project tasks', 'error' => $e->getMessage()], 500);
             }
         }
-
 
         
         public function getProjectTasksGroupedByMonth($project_id)
@@ -1656,90 +1667,96 @@ class PController extends Controller
     }
 
   
-
     public function editTask(Request $request, $taskId)
     {
-        $user = Auth::user();
-    
-        if (!in_array($user->role, ['admin', 'staff'])) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Unauthorized'
-            ], 403);
-        }
-    
-        $validatedData = $request->validate([
-            'pt_task_name' => 'nullable|string|max:255',
-            'pt_completion_date' => 'nullable|date',
-            'pt_starting_date' => 'nullable|date',
-            'pt_allocated_budget' => 'nullable|numeric', // allocated budget
-        ]);
-    
-        // Check if all submitted fields are null
-        if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_allocated_budget'])) {
-            return response()->json([
-                'status' => false,
-                'message' => 'No fields to update'
-            ], 400);
-        }
-    
-        DB::beginTransaction();
-    
-        try {
-            $task = Task::findOrFail($taskId);
-    
-            $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget']);
-    
-            // Handle task status based on completion date
-            if (!empty($validatedData['pt_completion_date'])) {
-                $completionDate = Carbon::parse($validatedData['pt_completion_date']);
-                $currentDate = Carbon::now();
-    
-                if ($completionDate->isPast()) {
-                    $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
-                } else {
-                    $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
-                }
+            $user = Auth::user();
+
+            if (!in_array($user->role, ['admin', 'staff'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Unauthorized'
+                ], 403);
             }
-    
-            // Prepare the update array
-            $updateData = array_filter([
-                'pt_task_name' => $validatedData['pt_task_name'],
-                'pt_completion_date' => $validatedData['pt_completion_date'],
-                'pt_starting_date' => $validatedData['pt_starting_date'],
-                'pt_allocated_budget' => $validatedData['pt_allocated_budget'] ?? $task->pt_allocated_budget,
-                'pt_status' => $validatedData['pt_status'] ?? $task->pt_status,
-                'updated_by' => $user->id,
-            ], function ($value) {
-                return !is_null($value);
-            });
-    
-            $task->update($updateData);
-    
-            $newValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget', 'pt_status']);
-    
-            AuditLogT::create([
-                'task_id' => $task->id,
-                'editor_id' => $user->id,
-                'action' => 'edit',
-                'old_values' => json_encode($oldValues),
-                'new_values' => json_encode($newValues),
+
+            $validatedData = $request->validate([
+                'pt_task_name' => 'nullable|string|max:255',
+                'pt_completion_date' => 'nullable|date',
+                'pt_starting_date' => 'nullable|date',
+                'pt_allocated_budget' => 'nullable|numeric', // allocated budget
             ]);
-    
-            DB::commit();
-    
-            return response()->json([
-                'message' => 'Task updated successfully',
-                'task' => $task
-            ], 200);
-        } catch (\Throwable $th) {
-            DB::rollBack();
-            return response()->json([
-                'status' => false,
-                'message' => $th->getMessage()
-            ], 500);
+
+            // Check if all submitted fields are null
+            if (empty($validatedData['pt_task_name']) && empty($validatedData['pt_completion_date']) && empty($validatedData['pt_starting_date']) && empty($validatedData['pt_allocated_budget'])) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No fields to update'
+                ], 400);
+            }
+
+            DB::beginTransaction();
+
+            try {
+                $task = Task::findOrFail($taskId);
+
+                $oldValues = $task->only(['pt_task_name', 'pt_completion_date', 'pt_starting_date', 'pt_allocated_budget']);
+
+                // Handle task status based on completion date
+                if (!empty($validatedData['pt_completion_date'])) {
+                    $completionDate = Carbon::parse($validatedData['pt_completion_date']);
+                    $currentDate = Carbon::now();
+
+                    if ($completionDate->isPast()) {
+                        $validatedData['pt_status'] = 'D'; // Set status to 'D' if the date has passed
+                    } else {
+                        $validatedData['pt_status'] = 'OG'; // Set status to 'OG' otherwise
+                    }
+                }
+
+                // Prepare the update array
+                $updateData = array_filter([
+                    'pt_task_name' => $validatedData['pt_task_name'],
+                    'pt_completion_date' => $validatedData['pt_completion_date'],
+                    'pt_starting_date' => $validatedData['pt_starting_date'],
+                    'pt_allocated_budget' => $validatedData['pt_allocated_budget'] ?? $task->pt_allocated_budget,
+                    'pt_status' => $validatedData['pt_status'] ?? $task->pt_status,
+                    'updated_by' => $user->id,
+                ]);
+
+                $task->update($updateData);
+
+                // Ensure task_id exists in audit_log_task table before inserting
+                if (!DB::table('project_tasks')->where('id', $taskId)->exists()) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Task ID does not exist'
+                    ], 400);
+                }
+                Log::info('Task ID exists in project_tasks table', ['task_id' => $taskId]);
+                DB::table('audit_log_task')->insert([
+                    'task_id' => $taskId,
+                    'editor_id' => Auth::id(),
+                    'action' => 'edit',
+                    'old_values' => json_encode($oldValues),
+                    'new_values' => json_encode($updateData),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                DB::commit();
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Task updated successfully'
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => $e->getMessage()
+                ], 500);
+            }
         }
-    }
 
     public function editTaskResources(Request $request, $taskId, $resourceId)
     {
@@ -1829,8 +1846,10 @@ class PController extends Controller
             $project = Project::findOrFail($projectId);
             Log::info('Project found: ' . $projectId);
     
-            // Fetch tasks related to the project
-            $tasks = Task::where('project_id', $projectId)->pluck('id');
+            // Fetch tasks related to the project where isRemoved is 0
+            $tasks = Task::where('project_id', $projectId)
+                         ->where('isRemoved', '0')
+                         ->pluck('id');
     
             // Fetch images and additional details from the task_update_pictures table
             $projectHistory = DB::table('task_update_pictures')
@@ -1841,7 +1860,10 @@ class PController extends Controller
                     $join->on('task_update_pictures.task_id', '=', 'task_estimated_values.task_id')
                         ->on('task_update_pictures.created_at', '=', 'task_estimated_values.created_at');
                 })
-                ->leftJoin('project_tasks', 'task_update_pictures.task_id', '=', 'project_tasks.id')
+                ->leftJoin('project_tasks', function($join) {
+                    $join->on('task_update_pictures.task_id', '=', 'project_tasks.id')
+                         ->where('project_tasks.isRemoved', '0');
+                })
                 ->leftJoin('categories', 'project_tasks.category_id', '=', 'categories.id')
                 ->whereIn('task_update_pictures.task_id', $tasks)
                 ->get([
@@ -1867,7 +1889,7 @@ class PController extends Controller
             $uniqueImages = [];
     
             // Get the project start date
-            $projectStartDate = \Carbon\Carbon::parse($project->created_at);
+            $projectStartDate = \Carbon\Carbon::parse($project->starting_date);
     
             // Iterate over each record and group images by their upload date and category
             foreach ($projectHistory as $record) {
@@ -1910,10 +1932,13 @@ class PController extends Controller
                 }
             }
     
-            // Fetch resources along with their task categories
+            // Fetch resources along with their task categories where project_tasks.isRemoved is 0
             $resources = DB::table('used_resources')
                 ->leftJoin('resources', 'used_resources.resource_id', '=', 'resources.id')
-                ->leftJoin('project_tasks', 'resources.task_id', '=', 'project_tasks.id')
+                ->leftJoin('project_tasks', function($join) {
+                    $join->on('resources.task_id', '=', 'project_tasks.id')
+                         ->where('project_tasks.isRemoved', '0');
+                })
                 ->leftJoin('categories', 'project_tasks.category_id', '=', 'categories.id')
                 ->whereIn('resources.task_id', $tasks)
                 ->get([
@@ -1933,8 +1958,6 @@ class PController extends Controller
                 $formattedDate = $resourceDate->format('Y-m-d');
                 $categoryName = $resource->category_name ?: 'Uncategorized'; // Default category for resources without a specific category
     
-
-    
                 if (!isset($historyByDateAndCategory[$formattedDate])) {
                     $historyByDateAndCategory[$formattedDate] = [];
                 }
@@ -1953,7 +1976,6 @@ class PController extends Controller
                         'pt_starting_date' => $resource->pt_starting_date, 
                         'pt_completion_date' => $resource->pt_completion_date, 
                         'pt_status' => $resource->pt_status
-
                     ];
                 }
     

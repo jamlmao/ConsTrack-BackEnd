@@ -94,7 +94,8 @@ class AuthController extends Controller
                         $profileId = $clientProfile->id;
                     }
                 }
-
+                
+                $user->last_logged_in_at = now();
                 $user->status = 'Active';
                 $user->save();
                 return response()->json([
