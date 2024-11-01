@@ -21,6 +21,7 @@ return new class extends Migration
             $table->timestamp('last_logged_in_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
+            $table->enum('isPSeen', ['1', '0'])->default('0');
         });
     }
 

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Hash;
 use App\Http\Resources\UserResource;
 use App\Models\StaffProfile;
 use App\Models\ClientProfile;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
@@ -29,7 +31,7 @@ class AuthController extends Controller
                     'regex:/[@$!%*?&#]/' // must contain a special character
                 ]
             ]);
-
+    
             if ($validate->fails()){
                 return response()->json([
                     'status'=> false,
@@ -37,15 +39,15 @@ class AuthController extends Controller
                     'message' => 'Validation Error'
                 ], 422);
             }
-
+    
             $user = User::create([
                 'name' => $request->name,
-                'email' => $request->email,
+                'email' => Crypt::encryptString($request->email), // Encrypt the email
                 'password' => Hash::make($request->password),
                 'role' => 'client', // Default role set to client
                 'status' => 'Deactivated' // not active or still not use 
             ]);
-
+    
             return response()->json([
                 'status' => true,
                 'message' => 'User created successfully',
@@ -58,67 +60,113 @@ class AuthController extends Controller
         }
     }
 
-    public function login(Request $request){
+    public function login(Request $request)
+    {
         try {
             $attrs = $request->validate([
                 'username' => 'required|string', // This can be either email or username
                 'password' => 'required|string',
             ]);
     
-            // Attempt to log in with email or username
-            if (Auth::attempt(['email' => $attrs['username'], 'password' => $attrs['password']]) ||
-                Auth::attempt(['name' => $attrs['username'], 'password' => $attrs['password']])) {
-                
-                $user = Auth::user();
-                $tokenResult = $user->createToken("AdminToken");
-                $token = $tokenResult->plainTextToken;
+            // Log the inputted username and password (for debugging purposes only)
+            Log::info('Inputted username: ' . $attrs['username']);
+            Log::info('Inputted password: ' . $attrs['password']);
     
-                // Set the expiration time on the accessToken
-                $tokenResult->accessToken->expires_at = now()->addHours(12); // Set token to expire in 8 hours
-                $tokenResult->accessToken->save();
+            $user = null;
+            $decryptedEmail = null;
     
-                $role = $user->role; // Get the role of the user
-                
-                // Initialize profile ID
-                $profileId = null;
-    
-                // Fetch the profile ID based on the user's role
-                if ($role === 'staff') {
-                    $staffProfile = StaffProfile::where('user_id', $user->id)->first();
-                    if ($staffProfile) {
-                        $profileId = $staffProfile->id;
-                    }
-                } elseif ($role === 'client') {
-                    $clientProfile = ClientProfile::where('user_id', $user->id)->first();
-                    if ($clientProfile) {
-                        $profileId = $clientProfile->id;
+            // Check if the input is an email
+            if (filter_var($attrs['username'], FILTER_VALIDATE_EMAIL)) {
+                // Try to find the user by email
+                $users = User::all();
+                foreach ($users as $u) {
+                    try {
+                        $decryptedEmail = Crypt::decryptString($u->email);
+                        Log::info('Comparing decrypted email: ' . $decryptedEmail . ' with input email: ' . $attrs['username']);
+                        if ($decryptedEmail === $attrs['username']) {
+                            $user = $u;
+                            Log::info('Decrypted email for login attempt: ' . $decryptedEmail);
+                            break;
+                        }
+                    } catch (\Exception $e) {
+                        // Handle decryption failure (if any)
+                        Log::error('Decryption failed for email: ' . $u->email . ' with error: ' . $e->getMessage());
+                        continue;
                     }
                 }
-                
-                $user->last_logged_in_at = now();
-                $user->status = 'Active';
-                $user->save();
-                return response()->json([
-                    'status' => true,
-                    'message' => 'Login successful',
-                    'token' => $token,
-                    'role' => $role,
-                    'profile_id' => $profileId,
-                ], 200);
             } else {
+                // Try to find the user by username
+                $user = User::where('name', $attrs['username'])->first();
+            }
+    
+            if ($user) {
+                // Log the stored hashed password for debugging
+                Log::info('Stored hashed password: ' . $user->password);
+    
+                // Manually verify the password
+                if (Hash::check($attrs['password'], $user->password)) {
+                    Log::info('Password verification successful');
+    
+                    // Log the user in manually
+                    Auth::login($user);
+    
+                    $tokenResult = $user->createToken("AdminToken");
+                    $token = $tokenResult->plainTextToken;
+    
+                    // Set the expiration time on the accessToken
+                    $tokenResult->accessToken->expires_at = now()->addHours(12); // Set token to expire in 12 hours
+                    $tokenResult->accessToken->save();
+    
+                    $role = $user->role; // Get the role of the user
+                    
+                    // Initialize profile ID
+                    $profileId = null;
+    
+                    // Fetch the profile ID based on the user's role
+                    if ($role === 'staff') {
+                        $staffProfile = StaffProfile::where('user_id', $user->id)->first();
+                        if ($staffProfile) {
+                            $profileId = $staffProfile->id;
+                        }
+                    } elseif ($role === 'client') {
+                        $clientProfile = ClientProfile::where('user_id', $user->id)->first();
+                        if ($clientProfile) {
+                            $profileId = $clientProfile->id;
+                        }
+                    }
+                    
+                    $user->last_logged_in_at = now();
+                    $user->status = 'Active';
+                    $user->save();
+                    return response()->json([
+                        'status' => true,
+                        'message' => 'Login successful',
+                        'token' => $token,
+                        'role' => $role,
+                        'profile_id' => $profileId,
+                    ], 200);
+                } else {
+                    Log::info('Password verification failed');
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Invalid login credentials'
+                    ], 401);
+                }
+            } else {
+                Log::info('User not found for username: ' . $attrs['username']);
                 return response()->json([
                     'status' => false,
                     'message' => 'Invalid login credentials'
                 ], 401);
             }
         } catch (\Throwable $th) {
+            Log::error('Login error: ' . $th->getMessage());
             return response()->json([
                 'status' => false,
                 'message' => $th->getMessage()
             ], 500);
         }
     }
-
 
     public function logout(Request $request)
     {

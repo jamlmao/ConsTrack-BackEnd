@@ -20,6 +20,7 @@ use App\Models\Project;
 use App\Models\Company;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Crypt;
 use DateTime;
 
 class AController extends Controller
@@ -31,17 +32,15 @@ class AController extends Controller
     public function createStaff(Request $request)
     {
         try {
-
             $user = Auth::user();
-
+    
             if ($user->role !== 'admin' && !$user->staffProfile) {
                 return response()->json([
                     'status' => false,
                     'message' => 'User does not have an associated staff profile'
                 ], 400);
             }
-
-
+    
             $validate = Validator::make($request->all(), 
             [
                 'name' => 'required|string|max:255|unique:users',
@@ -68,7 +67,7 @@ class AController extends Controller
                 'company_name' => 'required|string|max:255',
                 'company_logo' => 'nullable|string', // Add validation for base64 company_logo
             ]);
-
+    
             if ($validate->fails()){
                 return response()->json([
                     'status'=> false,
@@ -76,9 +75,9 @@ class AController extends Controller
                     'message' => 'Validation Error'
                 ], 422);
             }
-
+    
             DB::beginTransaction(); // Start the transaction
-
+    
             // Handle company logo upload
             $companyLogoPath = null;
             if (!empty($request->company_logo)) {
@@ -89,32 +88,31 @@ class AController extends Controller
                 $uniqueId = uniqid();
                 $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '.png';
                 $isSaved = Storage::disk('public')->put('company_logos/' . $imageName, $decodedImage);
-
+    
                 if (!$isSaved) {
                     return response()->json(['message' => 'Failed to save company logo'], 500);
                 }
-
+    
                 $companyLogoPath = 'storage/company_logos/' . $imageName;
             }
-
+    
             $company = Company::firstOrCreate(
                 ['company_name' => $request->company_name]
             );
-
-
+    
             if ($companyLogoPath) {
                 $company->company_logo = $companyLogoPath;
                 $company->save();
             }
-
+    
             $user = User::create([
                 'name' => $request->name,
-                'email' => $request->email,
+                'email' => Crypt::encryptString($request->email), // Encrypt the email
                 'password' => Hash::make($request->password),
                 'role' => 'staff', // Default role set to staff
                 'status' => 'Not Active' // not active or still not use 
             ]);
-
+    
             // Create staff profile
             $staffProfile = StaffProfile::create([
                 'user_id' => $user->id,
@@ -130,7 +128,7 @@ class AController extends Controller
                 'phone_number' => $request->phone_number,
                 'company_id' => $company->id, 
             ]);
-
+    
             // Log the creation of the staff profile
             AuditLog::create([
                 'user_id' => $user->id,
@@ -152,9 +150,9 @@ class AController extends Controller
                     'company_logo' => $companyLogoPath, // Add company logo path to the log
                 ]),
             ]);
-
+    
             DB::commit(); // Commit the transaction
-
+    
             return response()->json([
                 'status' => true,
                 'message' => 'Staff registered successfully',
@@ -169,7 +167,6 @@ class AController extends Controller
             ], 500);
         }
     }
-
     
 
     public function createStaffByAuthorizedStaff(Request $request)
