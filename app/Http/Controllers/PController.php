@@ -27,7 +27,7 @@ use App\Models\Company;
 use App\Models\Resources;
 use App\Models\Category;
 use DateTime;
-
+use Illuminate\Support\Facades\Crypt;
 class PController extends Controller
 {
    
@@ -483,8 +483,14 @@ class PController extends Controller
              $staffProfile = StaffProfile::where('user_id', $staffUserId)->firstOrFail();
              $clientProfile = ClientProfile::where('user_id', $clientUserId)->firstOrFail();
      
-             $staffEmail = $staffUser->email;
-             $clientEmail = $clientUser->email;
+             $EncryptedStaffEmail = $staffUser->email;
+             $EncryptedClientEmail = $clientUser->email;
+             $staffEmail = Crypt::decryptString($EncryptedStaffEmail);
+             $clientEmail = Crypt::decryptString($EncryptedClientEmail);
+             Log::info('Staff Email: ' . $staffEmail);
+             Log::info('Client Email: ' . $clientEmail);
+
+
              $staffCompanyId = $staffProfile->company_id;
              $clientCompanyId = $clientProfile->company_id;
      

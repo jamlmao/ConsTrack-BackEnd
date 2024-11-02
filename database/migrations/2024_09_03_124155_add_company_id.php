@@ -24,7 +24,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('client_profiles', function (Blueprint $table) {
-            //
+          
         });
     }
 };

@@ -25,7 +25,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('staff_profiles', function (Blueprint $table) {
-            //
+         
         });
     }
 };

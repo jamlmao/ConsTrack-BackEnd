@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
 use App\Mail\AppointmentAccepted;
 use App\Mail\AppointmentRejected;
 use App\Models\AvailableDate;
+use Illuminate\Support\Facades\Crypt;
 
 class AppointmentController extends Controller
 {
@@ -105,7 +106,22 @@ class AppointmentController extends Controller
     
             // Send email to staff
             $staffProfile = StaffProfile::find($validatedData['staff_id']);
-            $staffEmail = $staffProfile->user->email;
+            $encryptedEmail = $staffProfile->user->email;
+    
+             // Log the encrypted email
+            Log::info('Encrypted Staff Email: ', ['email' => $encryptedEmail]);
+
+            // Decrypt the email
+            try {
+                $staffEmail = Crypt::decryptString($encryptedEmail);
+            } catch (\Exception $e) {
+                Log::error('Error decrypting email: ', ['error' => $e->getMessage()]);
+                throw $e;
+            }
+
+            // Log the decrypted email
+            Log::info('Decrypted Staff Email: ', ['email' => $staffEmail]);
+    
             Mail::to($staffEmail)->send(new AppointmentRequest($clientProfile, $appointment, $companyName));
     
             DB::commit();
@@ -192,29 +208,29 @@ class AppointmentController extends Controller
     public function updateStatus(Request $request, $id)
     {
         Log::info('updateStatus called with ID: ' . $id);
-    
+
         try {
             // Start the transaction
             DB::beginTransaction();
-    
+
             // Validate the request
             $request->validate([
                 'status' => 'required|string|in:A,R'
             ]);
-    
+
             Log::info('Request validated');
-    
+
             // Find the appointment by ID
             $appointment = Appointment::findOrFail($id);
-    
+
             Log::info('Appointment found: ' . $appointment->id);
-    
+
             // Update the status
             $appointment->status = $request->input('status');
             $appointment->save();
-    
+
             Log::info('Appointment status updated to: ' . $appointment->status);
-    
+
             // Fetch the client and user email
             $client = $appointment->client;
             if (!$client) {
@@ -225,7 +241,7 @@ class AppointmentController extends Controller
                     'message' => 'Client not found.'
                 ], 500);
             }
-    
+
             $user = $client->user;
             if (!$user || !$user->email) {
                 Log::error('User email not found for client ID: ' . $client->id);
@@ -235,9 +251,21 @@ class AppointmentController extends Controller
                     'message' => 'User email not found.'
                 ], 500);
             }
-    
-            Log::info('User email: ' . $user->email);
-    
+
+            // Decrypt the email
+            try {
+                $decryptedEmail = Crypt::decryptString($user->email);
+            } catch (\Exception $e) {
+                Log::error('Error decrypting email: ' . $e->getMessage());
+                DB::rollBack();
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Error decrypting email.'
+                ], 500);
+            }
+
+            Log::info('Decrypted User email: ' . $decryptedEmail);
+
             // Fetch the company name from the companies table using the company_id
             $company = Company::find($client->company_id);
             if (!$company) {
@@ -249,34 +277,34 @@ class AppointmentController extends Controller
                 ], 500);
             }
             $companyName = $company->company_name; // Assuming the company name column is 'company_name'
-    
+
             // Log the company name
             Log::info('Company name: ' . $companyName);
-    
+
             // Get the available date using your existing function
             $availableDate = $this->getAvailableDates();
-    
+
             // Send email based on status
             if ($appointment->status == 'A') {
-                Mail::to($user->email)->send(new AppointmentAccepted($appointment, $companyName, $availableDate));
-                Log::info('AppointmentAccepted email sent to: ' . $user->email);
+                Mail::to($decryptedEmail)->send(new AppointmentAccepted($appointment, $companyName, $availableDate));
+                Log::info('AppointmentAccepted email sent to: ' . $decryptedEmail);
             } elseif ($appointment->status == 'R') {
                 // Get available dates excluding Saturdays and Sundays
                 $availableDates = $this->getAvailableDates();
-    
+
                 // Ensure $availableDates is an array
                 if (!is_array($availableDates)) {
                     $availableDates = [$availableDates];
                 }
-    
+
                 // Send rejection email with available dates
-                Mail::to($user->email)->send(new AppointmentRejected($appointment, $availableDates, $companyName, $availableDate));
-                Log::info('AppointmentRejected email sent to: ' . $user->email);
+                Mail::to($decryptedEmail)->send(new AppointmentRejected($appointment, $availableDates, $companyName, $availableDate));
+                Log::info('AppointmentRejected email sent to: ' . $decryptedEmail);
             }
-    
+
             // Commit the transaction
             DB::commit();
-    
+
             return response()->json([
                 'status' => true,
                 'message' => 'Appointment status updated successfully.',

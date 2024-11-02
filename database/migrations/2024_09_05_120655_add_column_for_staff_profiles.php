@@ -24,7 +24,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('staff_profiles', function (Blueprint $table) {
-            //
+            $table->dropColumn('extension_name');
+            $table->dropColumn('license_number');
         });
     }
 };

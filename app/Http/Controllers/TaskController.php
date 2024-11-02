@@ -24,7 +24,7 @@ use Intervention\Image\Facades\Image;
 use App\Models\Company;
 use App\Models\Resources;
 use App\Models\ProjectTasks;
-
+use Illuminate\Support\Facades\Crypt;
 class TaskController extends Controller
 {
    
@@ -477,7 +477,9 @@ class TaskController extends Controller
             }
 
              
-            $email = $user->email;
+            $EncryptedEmail = $user->email;
+            Log::info('Encrypted Email: ' . $EncryptedEmail);
+            $email = Crypt::decryptString($EncryptedEmail);
             Log::info('User Email: ' . $email);
 
           
@@ -494,7 +496,7 @@ class TaskController extends Controller
             Log::info('Company name: ' . $companyName);
     
             DB::commit();
-    
+            
             // Send email to the task assignee
             Mail::to($email)->send(new CompleteTask($task, $companyName));
     

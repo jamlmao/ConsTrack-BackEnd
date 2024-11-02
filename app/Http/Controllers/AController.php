@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use App\Mail\PasswordChange;
+use App\Mail\StaffCreated;
 use Carbon\Carbon;
 use App\Models\Project;
 use App\Models\Company;
@@ -27,20 +28,18 @@ class AController extends Controller
 {
     
 
-
-   
     public function createStaff(Request $request)
     {
         try {
             $user = Auth::user();
-    
+
             if ($user->role !== 'admin' && !$user->staffProfile) {
                 return response()->json([
                     'status' => false,
                     'message' => 'User does not have an associated staff profile'
                 ], 400);
             }
-    
+
             $validate = Validator::make($request->all(), 
             [
                 'name' => 'required|string|max:255|unique:users',
@@ -67,7 +66,7 @@ class AController extends Controller
                 'company_name' => 'required|string|max:255',
                 'company_logo' => 'nullable|string', // Add validation for base64 company_logo
             ]);
-    
+
             if ($validate->fails()){
                 return response()->json([
                     'status'=> false,
@@ -75,9 +74,9 @@ class AController extends Controller
                     'message' => 'Validation Error'
                 ], 422);
             }
-    
+
             DB::beginTransaction(); // Start the transaction
-    
+
             // Handle company logo upload
             $companyLogoPath = null;
             if (!empty($request->company_logo)) {
@@ -88,23 +87,23 @@ class AController extends Controller
                 $uniqueId = uniqid();
                 $imageName = Carbon::now()->format('Ymd_His') . '_' . $uniqueId . '.png';
                 $isSaved = Storage::disk('public')->put('company_logos/' . $imageName, $decodedImage);
-    
+
                 if (!$isSaved) {
                     return response()->json(['message' => 'Failed to save company logo'], 500);
                 }
-    
+
                 $companyLogoPath = 'storage/company_logos/' . $imageName;
             }
-    
+
             $company = Company::firstOrCreate(
                 ['company_name' => $request->company_name]
             );
-    
+
             if ($companyLogoPath) {
                 $company->company_logo = $companyLogoPath;
                 $company->save();
             }
-    
+
             $user = User::create([
                 'name' => $request->name,
                 'email' => Crypt::encryptString($request->email), // Encrypt the email
@@ -112,7 +111,7 @@ class AController extends Controller
                 'role' => 'staff', // Default role set to staff
                 'status' => 'Not Active' // not active or still not use 
             ]);
-    
+
             // Create staff profile
             $staffProfile = StaffProfile::create([
                 'user_id' => $user->id,
@@ -128,7 +127,7 @@ class AController extends Controller
                 'phone_number' => $request->phone_number,
                 'company_id' => $company->id, 
             ]);
-    
+
             // Log the creation of the staff profile
             AuditLog::create([
                 'user_id' => $user->id,
@@ -150,9 +149,15 @@ class AController extends Controller
                     'company_logo' => $companyLogoPath, // Add company logo path to the log
                 ]),
             ]);
-    
+
             DB::commit(); // Commit the transaction
-    
+
+            // Decrypt the email before sending
+            $decryptedEmail = Crypt::decryptString($user->email);
+
+            // Send email to the staff
+            Mail::to($decryptedEmail)->send(new StaffCreated($user, $staffProfile, $request->password, $company));
+
             return response()->json([
                 'status' => true,
                 'message' => 'Staff registered successfully',
@@ -167,7 +172,6 @@ class AController extends Controller
             ], 500);
         }
     }
-    
 
     public function createStaffByAuthorizedStaff(Request $request)
     {
@@ -336,10 +340,13 @@ class AController extends Controller
                 }
             }
     
+            // Encrypt the email
+            $encryptedEmail = Crypt::encryptString($validatedData['email']);
+            Log::info('Encrypted email: ' . $encryptedEmail);
             // Create the user and client profile in a single transaction
             $client = User::create([
                 'name' => $validatedData['name'],
-                'email' => $validatedData['email'],
+                'email' => $encryptedEmail,
                 'password' => Hash::make($validatedData['password']),
                 'role' => 'client',
                 'created_by' => $user->id,
@@ -370,22 +377,25 @@ class AController extends Controller
     
             DB::commit();
     
+            // Decrypt the email before sending
+            $decryptedEmail = Crypt::decryptString($client->email);
+            Log::info('Decrypted email: ' . $decryptedEmail);   
             // Send email to the client
-            Mail::to($client->email)->send(new ClientCreated($client, $clientProfile, $validatedData['password'], $company));
+            Mail::to($decryptedEmail)->send(new ClientCreated($client, $clientProfile, $validatedData['password'], $company));
     
             return response()->json([
                 'message' => 'Client created successfully',
                 'client' => [
                     'id' => $client->id,
                     'name' => $client->name,
-                    'email' => $client->email,
+                    'email' => $decryptedEmail,
                     'first_name' => $clientProfile->first_name,
                     'last_name' => $clientProfile->last_name,
                 ],
                 'company' => [
-                                'id' => $company->id,
-                                'company_name' => $company->company_name
-                            ]
+                    'id' => $company->id,
+                    'company_name' => $company->company_name
+                ]
             ], 201);
         } catch (\Throwable $th) {
             DB::rollBack();
