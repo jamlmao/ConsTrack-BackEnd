@@ -671,7 +671,13 @@ class TaskController extends Controller
                     ]);
                     $responseData['estimated_resource_value'] = $request->estimated_resource_value;
                 }
-        
+
+
+                $projectId = DB::table('project_tasks')->where('id', $taskId)->value('project_id');
+                $clientId = DB::table('projects')->where('id', $projectId)->value('client_id');
+                $userId = DB::table('client_profiles')->where('id', $clientId)->value('user_id');
+                DB::table('users')->where('id', $userId)->update(['isPSeen' => '1']);
+
                 $task->save();
         
                 DB::commit(); // Commit the transaction

@@ -131,4 +131,5 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/client/available-dates', [AppointmentController::class, 'getAvailableDatesWithStatus']);
     Route::put('/category/remove/{categoryId}', [CategoryController::class, 'removeCategory']);
     Route::put('/task/remove/{taskId}', [TaskController::class, 'removeTask']);
+    Route::post('/ClientTaskisSeen', [PController::class, 'updateIsPSeen']);
 });

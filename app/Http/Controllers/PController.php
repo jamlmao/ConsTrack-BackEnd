@@ -2022,4 +2022,29 @@ class PController extends Controller
             return response()->json(['error' => 'An error occurred while fetching the history'], 500);
         }
     }
+
+    public function updateIsPSeen(Request $request)
+    {
+        $projectId = $request->input('project_id');
+
+        // Get the client ID from the project table
+        $clientId = DB::table('projects')->where('id', $projectId)->value('client_id');
+
+        // Get the user ID from the client ID
+        $userId = DB::table('client_profiles')->where('id', $clientId)->value('user_id');
+
+        // Update the isPSeen column to 1 for the user
+        DB::table('users')->where('id', $userId)->update(['isPSeen' => '1']);
+
+        return response()->json(['message' => 'isPSeen updated successfully']);
+    }
+
+
+
+
+
+
+
+
+
 }

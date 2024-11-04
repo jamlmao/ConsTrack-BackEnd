@@ -426,7 +426,7 @@ class AController extends Controller
             ->where('client_profiles.company_id', $companyId)
             ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
             ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
-            ->select('client_profiles.*', 'projects.status as project_status', 'users.status as user_status', 'users.last_logged_in_at') // Include last_logged_in_at
+            ->select('client_profiles.*', 'projects.status as project_status', 'users.status as user_status', 'users.last_logged_in_at', 'users.isPSeen') // Include isPSeen
             ->get();
     
         // Map project statuses to descriptive terms
@@ -440,6 +440,10 @@ class AController extends Controller
             if (isset($client->project_status) && array_key_exists($client->project_status, $statusMapping)) {
                 $client->project_status = $statusMapping[$client->project_status];
             }
+            // Add viewed project phrase if isPSeen is 1
+            if ($client->isPSeen == '1') {
+                $client->viewed_project = 'Viewed project';
+            }
             return $client;
         });
     
@@ -448,7 +452,11 @@ class AController extends Controller
     
         return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
     }
-    
+
+
+
+
+
         public function getClientsUnderSameCompany2()
         {
             // Get the logged-in staff profile
