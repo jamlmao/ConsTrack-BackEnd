@@ -676,7 +676,11 @@ class TaskController extends Controller
                 $projectId = DB::table('project_tasks')->where('id', $taskId)->value('project_id');
                 $clientId = DB::table('projects')->where('id', $projectId)->value('client_id');
                 $userId = DB::table('client_profiles')->where('id', $clientId)->value('user_id');
-                DB::table('users')->where('id', $userId)->update(['isPSeen' => '1']);
+                DB::table('users')->where('id', $userId)->update(['isPSeen' => '0']);
+
+
+                DB::table('users')->where('id', $userId)->where('last_logged_in_at', '<', now()->subDays(1))->update(['isPSeen' => '1']);
+
 
                 $task->save();
         

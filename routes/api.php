@@ -11,6 +11,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ResourcesController;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Illuminate\Support\Facades\Artisan;
 
 /*
 |--------------------------------------------------------------------------
@@ -54,7 +55,7 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     
     Route::get('/PtImages/{project_id}', [PController::class, 'getProjectTaskImages']);
     Route::get('/taskWdates/{project_id}', [PController::class, 'getProjectTasksGroupedByMonth']);
-    Route::post('/refresh-tables', [PController::class, 'refreshTables']);
+    //Route::post('/refresh-tables', [PController::class, 'refreshTables']);
     
     
     Route::get('/Alltask', [TaskController::class, 'getAllTasksWithResources']);
@@ -127,9 +128,15 @@ Route::group(['middleware'=> ['auth:sanctum']],function(){
     Route::get('/history/{projectId}', [PController::class, 'getProjectHistory']);
     Route::post('/insert-available-dates', [AppointmentController::class, 'insertAvailableDates']);
     Route::post('/admin/update-password', [AController::class, 'updatePassword']);
+
+
+    Route::post('/change-password', [AController::class, 'changeUserPassword']);
+ 
+
     Route::get('/available-dates', [AppointmentController::class, 'getAvailableDates2']);
     Route::get('/client/available-dates', [AppointmentController::class, 'getAvailableDatesWithStatus']);
     Route::put('/category/remove/{categoryId}', [CategoryController::class, 'removeCategory']);
     Route::put('/task/remove/{taskId}', [TaskController::class, 'removeTask']);
     Route::post('/ClientTaskisSeen', [PController::class, 'updateIsPSeen']);
 });
+    

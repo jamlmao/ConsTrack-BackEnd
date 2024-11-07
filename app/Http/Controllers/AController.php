@@ -408,50 +408,80 @@ class AController extends Controller
     }
 
     public function getClientsUnderSameCompany()
-    {
-        // Get the logged-in staff profile
-        $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
-    
-        if (!$staffProfile) {
-            return response()->json(['error' => 'Staff profile not found'], 404);
-        }
-    
-        // Get the company ID from the staff profile
-        $companyId = $staffProfile->company_id;
-    
-        // Get clients under the same company and their project statuses
-        $clients = DB::table('client_profiles')
-            ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
-            ->leftJoin('users', 'client_profiles.user_id', '=', 'users.id') // Join with users table
-            ->where('client_profiles.company_id', $companyId)
-            ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
-            ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
-            ->select('client_profiles.*', 'projects.status as project_status', 'users.status as user_status', 'users.last_logged_in_at', 'users.isPSeen') // Include isPSeen
-            ->get();
-    
-        // Map project statuses to descriptive terms
-        $statusMapping = [
-            'OG' => 'Ongoing',
-            'C' => 'Complete',
-            'D' => 'Due'
-        ];
-    
-        $clients = $clients->map(function ($client) use ($statusMapping) {
-            if (isset($client->project_status) && array_key_exists($client->project_status, $statusMapping)) {
-                $client->project_status = $statusMapping[$client->project_status];
-            }
-            // Add viewed project phrase if isPSeen is 1
-            if ($client->isPSeen == '1') {
-                $client->viewed_project = 'Viewed project';
-            }
-            return $client;
-        });
-    
-        // Count the number of clients
-        $clientCount = $clients->count();
-    
-        return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
+{
+    // Get the logged-in staff profile
+    $staffProfile = StaffProfile::where('user_id', Auth::id())->first();
+
+    if (!$staffProfile) {
+        return response()->json(['error' => 'Staff profile not found'], 404);
     }
+
+    // Get the company ID from the staff profile
+    $companyId = $staffProfile->company_id;
+
+    // Get clients under the same company and their project statuses
+    $clients = DB::table('client_profiles')
+        ->leftJoin('projects', 'client_profiles.id', '=', 'projects.client_id')
+        ->leftJoin('users', 'client_profiles.user_id', '=', 'users.id') // Join with users table
+        ->where('client_profiles.company_id', $companyId)
+        ->whereNotNull('client_profiles.company_id') // Ensure company_id is not null
+        ->whereIn('users.status', ['Active', 'Not Active']) // Filter by user status
+        ->select('client_profiles.*', 'projects.status as project_status', 'users.status as user_status', 'users.last_logged_in_at', 'users.isPSeen', 'users.updated_at', 'users.created_at') // Include isPSeen
+        ->get();
+
+    // Map project statuses to descriptive terms
+    $statusMapping = [
+        'OG' => 'Ongoing',
+        'C' => 'Complete',
+        'D' => 'Due'
+    ];
+
+    $clients = $clients->map(function ($client) use ($statusMapping) {
+        if (isset($client->project_status) && array_key_exists($client->project_status, $statusMapping)) {
+            $client->project_status = $statusMapping[$client->project_status];
+        }
+        // Define the threshold for 7 days
+        $viewedThreshold = now()->subDays(7)->toDateString();
+
+        // Extract dates only (ignore time)
+        $lastLoggedInDate = Carbon::parse($client->last_logged_in_at)->toDateString();
+        $updatedDate = Carbon::parse($client->updated_at)->toDateString();
+        $createdDate = Carbon::parse($client->created_at)->toDateString();
+
+        // Debug information
+        // $isPSeenCondition = $client->isPSeen == '1';
+        // $updatedWithinThresholdCondition = $updatedDate >= $viewedThreshold;
+        // $createdMatchesUpdatedCondition = $createdDate == $updatedDate;
+        // $loggedInMatchesUpdatedCondition = $lastLoggedInDate == $updatedDate;
+        // $createdNotMatchesLoggedInCondition = $createdDate != $lastLoggedInDate;
+
+        // // Log debug information
+        // Log::debug('Client ID: ' . $client->id);
+        // Log::debug('isPSeenCondition: ' . ($isPSeenCondition ? 'true' : 'false'));
+        // Log::debug('updatedWithinThresholdCondition: ' . ($updatedWithinThresholdCondition ? 'true' : 'false'));
+        // Log::debug('createdMatchesUpdatedCondition: ' . ($createdMatchesUpdatedCondition ? 'true' : 'false'));
+        // Log::debug('loggedInMatchesUpdatedCondition: ' . ($loggedInMatchesUpdatedCondition ? 'true' : 'false'));
+        // Log::debug('createdNotMatchesLoggedInCondition: ' . ($createdNotMatchesLoggedInCondition ? 'true' : 'false'));
+
+        // Add viewed project phrase if isPSeen is 1 or if the project was updated within the last 7 days and created_at matches updated_at
+        if ($isPSeenCondition || ($updatedWithinThresholdCondition && $createdMatchesUpdatedCondition)) {
+            $client->viewed_project = 'Viewed project';
+        } elseif (!$isPSeenCondition && $loggedInMatchesUpdatedCondition && $createdNotMatchesLoggedInCondition) {
+            // If the user logged in recently but did not view the project
+            $client->viewed_project = 'User logged in but did not access the project';
+        } else {
+            // Default case if none of the above conditions are met
+            $client->viewed_project = 'No recent activity';
+        }
+        return $client;
+    });
+
+
+    // Count the number of clients
+    $clientCount = $clients->count();
+
+    return response()->json(['clients' => $clients, 'client_count' => $clientCount], 200);
+}
 
 
 
@@ -905,6 +935,54 @@ class AController extends Controller
         return response()->json(['message' => 'OTP sent to your email'], 200);
     }
 
+
+
+    public function changeUserPassword(Request $request)
+    {
+        // Validate the request
+        $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'new_password' => [
+                'required',
+                'string',
+                'min:8',
+                'regex:/[A-Z]/', // must contain at least one uppercase letter
+                'regex:/[a-z]/', // must contain at least one lowercase letter
+                'regex:/[0-9]/', // must contain at least one digit
+                'regex:/[@$!%*?&#]/' // must contain a special character
+            ],
+        ]);
+
+        // Check if the authenticated user has the admin role
+        $admin = Auth::user();
+        if ($admin->role !== 'admin') {
+            Log::warning('Unauthorized access attempt by user ID: ' . $admin->id);
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        // Find the user by ID
+        $user = User::findOrFail($request->user_id);
+
+        // Update the user's password
+        $user->password = Hash::make($request->new_password);
+        $user->save();
+
+        // Log the password update
+        Log::info('Password updated successfully for user ID: ' . $user->id . ' by admin ID: ' . $admin->id);
+
+        // Verify the password update
+        $updatedUser = User::findOrFail($request->user_id);
+        if (Hash::check($request->new_password, $updatedUser->password)) {
+            Log::info('Password verification successful for user ID: ' . $updatedUser->id);
+        } else {
+            Log::error('Password verification failed for user ID: ' . $updatedUser->id);
+        }
+
+        return response()->json(['message' => 'Password updated successfully'], 200);
+    }
+
+      
+   
 
 
 

@@ -2026,19 +2026,21 @@ class PController extends Controller
     public function updateIsPSeen(Request $request)
     {
         $projectId = $request->input('project_id');
-
+    
         // Get the client ID from the project table
         $clientId = DB::table('projects')->where('id', $projectId)->value('client_id');
-
+    
         // Get the user ID from the client ID
         $userId = DB::table('client_profiles')->where('id', $clientId)->value('user_id');
-
-        // Update the isPSeen column to 1 for the user
-        DB::table('users')->where('id', $userId)->update(['isPSeen' => '1']);
-
+    
+        // Update the isPSeen column to 1 and update the created_at column to the current timestamp for the user
+        DB::table('users')->where('id', $userId)->update([
+            'isPSeen' => '1',
+            'created_at' => now()
+        ]);
+    
         return response()->json(['message' => 'isPSeen updated successfully']);
     }
-
 
 
 
